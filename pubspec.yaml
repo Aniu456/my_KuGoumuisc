@@ -41,7 +41,7 @@ dependencies:
   just_audio: ^0.9.36
   just_audio_background: ^0.0.1-beta.11
   # 本地存储
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.3.5
   # 网络请求
   dio: ^5.4.0
   # 路由管理
@@ -105,3 +105,6 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  assets:
+    - assets/images/
