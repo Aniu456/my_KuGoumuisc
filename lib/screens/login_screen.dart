@@ -160,15 +160,24 @@ class _LoginScreenState extends State<LoginScreen>
         }
 
         if (state is AuthAuthenticated) {
-          // 先弹出登录页面
-          Navigator.of(context).pop();
-          // 显示登录成功提示
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('登录成功'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          // 使用 mounted 检查确保 widget 仍然在树中
+          if (!mounted) return;
+
+          // 确保在主线程中执行导航
+          Future.microtask(() {
+            // 显示登录成功提示
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('登录成功'),
+                backgroundColor: Colors.green,
+              ),
+            );
+
+            // 安全地弹出登录页面
+            if (Navigator.canPop(context)) {
+              Navigator.of(context).pop();
+            }
+          });
         }
       },
       child: LoadingOverlay(
