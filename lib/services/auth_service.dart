@@ -138,15 +138,54 @@ class AuthService {
   /// @param password 密码
   Future<void> loginWithPassword(String username, String password) async {
     try {
-      // 确保有设备ID
-      await _ensureDeviceId();
-
       final response = await _apiService.loginWithPassword(username, password);
-      await _handleLoginResponse(response);
+      print('密码登录响应: $response');
+
+      // 检查响应状态
+      if (response['status'] != 1) {
+        throw Exception(response['error_msg'] ?? '登录失败');
+      }
+
+      final data = response['data'] as Map<String, dynamic>;
+      final token = data['token'] as String?;
+      final userId = data['userid']?.toString();
+
+      if (token == null || userId == null) {
+        throw Exception('登录响应格式无效');
+      }
+
+      _userId = userId;
+      await _prefs.setString(_userIdKey, userId);
+
+      // 创建基础用户信息
+      final user = User(
+        userId: userId,
+        nickname: data['nickname'] ?? data['username'] ?? userId,
+        pic: data['pic'] as String?,
+        isVip: data['is_vip'] == 1,
+        token: token,
+        serverTime: DateTime.now(),
+        vipToken: data['vip_token'] as String?,
+        vipBeginTime: data['vip_begin_time'] as String?,
+        vipEndTime: data['vip_end_time'] as String?,
+        extraInfo: {
+          'userDetail': data,
+          'vipInfo': {
+            'is_vip': data['is_vip'] ?? 0,
+            'vip_type': data['vip_type'] ?? 0,
+            'vip_begin_time': data['vip_begin_time'],
+            'vip_end_time': data['vip_end_time'],
+          },
+        },
+      );
+
+      await _persistAuth(user, token);
+      _authStateController.add(AuthState.authenticated);
 
       // 获取额外信息
       await _fetchUserExtraInfo();
     } catch (e) {
+      print('密码登录失败: $e');
       _authStateController.add(AuthState.error);
       rethrow;
     }
@@ -217,8 +256,19 @@ class AuthService {
       pic: data['pic'] as String?,
       isVip: data['is_vip'] == 1,
       token: token,
-      serverTime: DateTime.now(), // 如果服务器没有返回时间，使用本地时间
-      extraInfo: {'userDetail': data},
+      serverTime: DateTime.now(),
+      vipToken: data['vip_token'] as String?,
+      vipBeginTime: data['vip_begin_time'] as String?,
+      vipEndTime: data['vip_end_time'] as String?,
+      extraInfo: {
+        'userDetail': data,
+        'vipInfo': {
+          'is_vip': data['is_vip'] ?? 0,
+          'vip_type': data['vip_type'] ?? 0,
+          'vip_begin_time': data['vip_begin_time'],
+          'vip_end_time': data['vip_end_time'],
+        },
+      },
     );
 
     await _persistAuth(user, token);

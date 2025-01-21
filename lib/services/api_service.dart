@@ -103,10 +103,38 @@ class ApiService {
           'username': username,
           'password': password,
         },
+        options: Options(
+          validateStatus: (status) {
+            return status! < 500 || status == 500 || status == 502;
+          },
+        ),
       );
-      return response.data;
+      print('账号密码登录响应: ${response.data}');
+
+      // 解析响应数据
+      final responseData = response.data as Map<String, dynamic>;
+
+      // 检查登录状态
+      if (responseData['status'] == 1) {
+        // 保存token
+        final token = responseData['data']?['token'] as String?;
+        if (token != null) {
+          await _prefs.setString('auth_token', token);
+          // 保存用户ID
+          final userId = responseData['data']?['userid']?.toString();
+          if (userId != null) {
+            await _prefs.setString('user_id', userId);
+          }
+        }
+        return responseData;
+      }
+
+      // 登录失败抛出异常
+      throw Exception(responseData['error_msg'] ?? '登录失败');
     } on DioException catch (e) {
       throw _handleDioError(e);
+    } catch (e) {
+      rethrow;
     }
   }
 
