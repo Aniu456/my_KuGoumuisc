@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:my_music_app/utils/image_utils.dart';
 import '../bloc/auth/auth_bloc.dart';
 import '../services/api_service.dart';
+import '../models/playlist.dart';
+import 'music_list_screen.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -12,51 +15,88 @@ class ProfileTab extends StatefulWidget {
 
 class _ProfileTabState extends State<ProfileTab> {
   bool _isLoading = false;
+  List<Playlist> _playlists = [];
+  int _playlistCount = 0;
 
   @override
   void initState() {
     super.initState();
-    // 只在第一次加载时获取用户信息
-    _fetchUserInfo();
+    _fetchUserData();
   }
 
-  Future<void> _fetchUserInfo() async {
+  Future<void> _fetchUserData() async {
     final state = context.read<AuthBloc>().state;
     if (state is! AuthAuthenticated) return;
 
     setState(() => _isLoading = true);
-    try {
-      final apiService = context.read<ApiService>();
-      final userDetail = await apiService.getUserDetail();
-      final vipInfo = await apiService.getUserVipInfo();
 
-      if (userDetail['status'] == 1 && mounted) {
-        context.read<AuthBloc>().add(
-              AuthUpdateUserInfo(
-                userDetail: userDetail,
-                vipInfo: vipInfo,
-              ),
-            );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('获取用户信息失败: $e')),
-        );
-      }
+    try {
+      await Future.wait([
+        // _fetchUserInfo(),
+        _fetchPlaylists(),
+      ]);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() => _isLoading = false);
     }
   }
+
+  Future<void> _fetchPlaylists() async {
+    try {
+      final apiService = context.read<ApiService>();
+      final response = await apiService.getUserPlaylists(forceRefresh: true);
+
+      final List<Playlist> playlists = (response['info'] as List)
+          .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
+          .toList();
+
+      setState(() {
+        _playlists = playlists;
+        _playlistCount = response['list_count'] ?? 0;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取歌单失败: $e')),
+      );
+    }
+  }
+
+  // Future<void> _fetchUserInfo() async {
+  //   try {
+  //     final apiService = context.read<ApiService>();
+  //     final userDetail = await apiService.getUserDetail();
+
+  //     if (userDetail['status'] == 1) {
+  //       final data = userDetail['data'];
+  //       final vipInfo = {
+  //         'isVip': data['su_vip_begin_time'] != null &&
+  //             data['su_vip_end_time'] != null &&
+  //             DateTime.now()
+  //                 .isAfter(DateTime.parse(data['su_vip_begin_time'])) &&
+  //             DateTime.now().isBefore(DateTime.parse(data['su_vip_end_time'])),
+  //         'beginTime': data['su_vip_begin_time'],
+  //         'endTime': data['su_vip_end_time'],
+  //       };
+
+  //       context.read<AuthBloc>().add(
+  //             AuthUpdateUserInfo(
+  //               userDetail: userDetail,
+  //               vipInfo: vipInfo,
+  //             ),
+  //           );
+  //     }
+  //   } catch (e) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('获取用户信息失败: $e')),
+  //     );
+  //   }
+  // }
 
   void _handleLoginTap() {
     Navigator.of(context).pushNamed('/login').then((_) {
       // 从登录页面返回后，检查是否需要刷新用户信息
       final state = context.read<AuthBloc>().state;
       if (state is AuthAuthenticated) {
-        _fetchUserInfo();
+        _fetchUserData();
       }
     });
   }
@@ -98,7 +138,7 @@ class _ProfileTabState extends State<ProfileTab> {
 
         return Scaffold(
           body: RefreshIndicator(
-            onRefresh: _fetchUserInfo,
+            onRefresh: _fetchUserData,
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -369,10 +409,12 @@ class _ProfileTabState extends State<ProfileTab> {
                               ListTile(
                                 title: Row(
                                   children: [
-                                    const Text('我创建的歌单'),
+                                    const Text('我的歌单'),
                                     const SizedBox(width: 8),
                                     Text(
-                                      isAuthenticated ? '2' : '0',
+                                      isAuthenticated
+                                          ? _playlistCount.toString()
+                                          : '0',
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 14,
@@ -388,44 +430,57 @@ class _ProfileTabState extends State<ProfileTab> {
                                     : () => _handleLoginTap(),
                               ),
                               const Divider(height: 1),
-                              ListTile(
-                                leading: Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: Colors.pink[50],
-                                    borderRadius: BorderRadius.circular(8),
+                              if (isAuthenticated) ...[
+                                for (var playlist in _playlists)
+                                  ListTile(
+                                    leading: Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: Colors.grey[100],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: playlist.pic.isNotEmpty
+                                            ? Image.network(
+                                                ImageUtils.getThumbnailUrl(
+                                                    playlist.pic),
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error,
+                                                    stackTrace) {
+                                                  return const Icon(
+                                                    Icons.music_note,
+                                                    color: Colors.grey,
+                                                  );
+                                                },
+                                              )
+                                            : Icon(
+                                                Icons.music_note,
+                                                color: Colors.grey[400],
+                                              ),
+                                      ),
+                                    ),
+                                    title: Text(
+                                      playlist.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text('${playlist.count}首'),
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => MusicListScreen(
+                                            type: MusicListType.favorite,
+                                            title: playlist.name,
+                                            playlist: playlist,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                  child: Icon(Icons.favorite,
-                                      color: Colors.pink[300]),
-                                ),
-                                title: const Text('我喜欢'),
-                                subtitle: Text(isAuthenticated ? '992首' : '0首'),
-                                onTap: isAuthenticated
-                                    ? () {
-                                        // TODO: 跳转到喜欢的音乐列表
-                                      }
-                                    : () => _handleLoginTap(),
-                              ),
-                              ListTile(
-                                leading: Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange[50],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(Icons.star,
-                                      color: Colors.orange[300]),
-                                ),
-                                title: const Text('默认收藏'),
-                                subtitle: Text(isAuthenticated ? '115首' : '0首'),
-                                onTap: isAuthenticated
-                                    ? () {
-                                        // TODO: 跳转到收藏列表
-                                      }
-                                    : () => _handleLoginTap(),
-                              ),
+                              ],
                             ],
                           ),
                         ),
@@ -511,27 +566,61 @@ class _ProfileTabState extends State<ProfileTab> {
     required String label,
     required String count,
   }) {
-    return Column(
-      children: [
-        Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: () {
+        final state = context.read<AuthBloc>().state;
+        if (state is! AuthAuthenticated) {
+          _handleLoginTap();
+          return;
+        }
+
+        MusicListType type;
+        switch (label) {
+          case '收藏':
+            type = MusicListType.favorite;
+            break;
+          case '最近':
+            type = MusicListType.recent;
+            break;
+          case '本地':
+            type = MusicListType.local;
+            break;
+          default:
+            return;
+        }
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MusicListScreen(
+              type: type,
+              title: label,
+            ),
           ),
-          child: Icon(icon, color: Colors.blue[600]),
-        ),
-        const SizedBox(height: 4),
-        Text(label),
-        Text(
-          count,
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
+        );
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: Colors.blue[600]),
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(label),
+          Text(
+            count,
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

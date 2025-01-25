@@ -53,6 +53,7 @@ dependencies:
   # 工具
   logger: ^2.0.2+1
   intl: ^0.19.0
+  marquee: ^2.3.0
 
 dev_dependencies:
   flutter_test:

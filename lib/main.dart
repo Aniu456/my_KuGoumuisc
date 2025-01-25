@@ -3,27 +3,37 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
+import 'services/player_service.dart';
 import 'bloc/auth/auth_bloc.dart';
 import 'widgets/discovery_tab.dart';
 import 'widgets/profile_tab.dart';
 import 'screens/login_screen.dart';
+import 'pages/player_page.dart';
+import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final apiService = ApiService(prefs);
+  final playerService = PlayerService(apiService);
 
-  runApp(MyApp(prefs: prefs, apiService: apiService));
+  runApp(MyApp(
+    prefs: prefs,
+    apiService: apiService,
+    playerService: playerService,
+  ));
 }
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
   final ApiService apiService;
+  final PlayerService playerService;
 
   const MyApp({
     super.key,
     required this.prefs,
     required this.apiService,
+    required this.playerService,
   });
 
   @override
@@ -32,26 +42,26 @@ class MyApp extends StatelessWidget {
       providers: [
         RepositoryProvider.value(value: apiService),
       ],
-      child: BlocProvider(
-        create: (context) => AuthBloc(
-          authService: AuthService(prefs, apiService),
-        )..add(AuthCheckRequested()),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => playerService),
+          BlocProvider(
+            create: (context) => AuthBloc(
+              authService: AuthService(prefs, apiService),
+            )..add(AuthCheckRequested()),
+          ),
+        ],
         child: MaterialApp(
           title: 'Music App',
           theme: ThemeData(
-            primaryColor: Colors.blue,
-            primarySwatch: Colors.blue,
+            primaryColor: const Color(0xFF2196F3),
             scaffoldBackgroundColor: Colors.white,
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
+            brightness: Brightness.light,
           ),
           home: const MainScreen(),
           routes: {
             '/login': (context) => const LoginScreen(),
+            '/player': (context) => const PlayerPage(),
           },
           debugShowCheckedModeBanner: false,
         ),
