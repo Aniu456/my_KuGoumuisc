@@ -34,9 +34,12 @@ class _RecentSongsPageState extends State<RecentSongsPage> {
       final apiService = context.read<ApiService>();
       final response = await apiService.getRecentSongs();
 
-      setState(() {
-        _recentSongs = response.songs;
-      });
+      if (mounted) {
+        setState(() {
+          _recentSongs = response.songs;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

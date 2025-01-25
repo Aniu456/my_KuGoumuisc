@@ -15,39 +15,56 @@ class RecentSongsSection extends StatefulWidget {
   State<RecentSongsSection> createState() => _RecentSongsSectionState();
 }
 
-class _RecentSongsSectionState extends State<RecentSongsSection> {
-  bool _isLoading = false;
+class _RecentSongsSectionState extends State<RecentSongsSection>
+    with AutomaticKeepAliveClientMixin {
   List<RecentSong> _recentSongs = [];
+  bool _isFirstLoad = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadRecentSongs();
+  bool get wantKeepAlive => true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 只在第一次加载时从缓存获取数据
+    if (_isFirstLoad) {
+      _isFirstLoad = false;
+      _loadFromCache();
+    }
   }
 
-  Future<void> _loadRecentSongs() async {
-    if (_isLoading) return;
-
-    setState(() => _isLoading = true);
-
+  // 从缓存加载数据
+  Future<void> _loadFromCache() async {
     try {
       final apiService = context.read<ApiService>();
       final response = await apiService.getRecentSongs();
+      _updateSongsData(response);
+    } catch (e) {
+      print('从缓存加载最近播放失败: $e');
+    }
+  }
 
-      setState(() {
-        _recentSongs = response.songs;
-      });
+  // 从服务器刷新数据
+  Future<void> _refreshFromServer() async {
+    try {
+      final apiService = context.read<ApiService>();
+      final response = await apiService.getRecentSongs(forceRefresh: true);
+      _updateSongsData(response);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载最近播放失败: $e')),
+          SnackBar(content: Text('刷新最近播放失败: $e')),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
+  }
+
+  // 更新歌曲数据
+  void _updateSongsData(RecentSongsResponse response) {
+    if (!mounted) return;
+    setState(() {
+      _recentSongs = response.songs;
+    });
   }
 
   Future<void> _playSong(RecentSong recentSong) async {
@@ -127,9 +144,7 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
           ),
 
           // 最近播放列表
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator())
-          else if (_recentSongs.isEmpty)
+          if (_recentSongs.isEmpty)
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Text('暂无播放记录'),

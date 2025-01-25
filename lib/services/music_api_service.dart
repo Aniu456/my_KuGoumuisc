@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import '../models/user.dart';
 
 class MusicApiService {
-  static const String baseUrl = 'http://localhost:3000'; // TODO: 替换为实际的API地址
+  static const String baseUrl = 'http://8.148.7.143:3000';
   final Dio _dio;
   String? _token;
   String? _userId;

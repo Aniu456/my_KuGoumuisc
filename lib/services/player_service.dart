@@ -164,7 +164,7 @@ class PlayerService extends ChangeNotifier {
             headers: {
               'User-Agent':
                   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Referer': 'http://localhost:3000',
+              'Referer': 'http://8.148.7.143:3000',
             },
           );
           _currentSong = song;
@@ -327,7 +327,7 @@ class PlayerService extends ChangeNotifier {
             headers: {
               'User-Agent':
                   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Referer': 'http://localhost:3000',
+              'Referer': 'http://8.148.7.143:3000',
             },
           );
           _currentSong = song;

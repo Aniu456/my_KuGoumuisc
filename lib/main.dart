@@ -10,7 +10,7 @@ import 'widgets/profile_tab.dart';
 import 'screens/login_screen.dart';
 import 'pages/player_page.dart';
 import 'package:provider/provider.dart';
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();

@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import '../models/song.dart';
 import '../models/recent_song.dart';
 
 /// API服务类
@@ -9,10 +8,13 @@ import '../models/recent_song.dart';
 /// 使用Dio作为HTTP客户端，SharedPreferences进行本地数据存储
 class ApiService {
   /// 服务器基础URL
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'http://8.148.7.143:3000';
 
   /// 本地存储的歌单缓存键名
   static const String _playlistsCacheKey = 'playlists_cache';
+  static const String _recentSongsCacheKey = 'recent_songs_cache';
+  static const Duration _cacheExpiration = Duration(minutes: 30); // 缓存过期时间
+  static const int _maxRetries = 3; // 最大重试次数
 
   /// Dio实例，用于发送HTTP请求
   final Dio _dio;
@@ -208,42 +210,59 @@ class ApiService {
   }
 
   /// 获取用户歌单
-  /// @param forceRefresh 是否强制刷新，默认false
-  /// @return 返回用户歌单
-  /// @throws Exception 当获取失败时抛出异常
   Future<Map<String, dynamic>> getUserPlaylists(
       {bool forceRefresh = false}) async {
     try {
-      // 如果不是强制刷新，尝试从缓存获取
+      // 尝试从缓存获取
       if (!forceRefresh) {
-        final cachedData = _prefs.getString(_playlistsCacheKey);
+        final cachedData = _getValidCache(_playlistsCacheKey);
         if (cachedData != null) {
-          final decoded = json.decode(cachedData);
+          // 在后台刷新缓存
+          Future.delayed(Duration.zero, () async {
+            try {
+              final response = await _dio.get('/user/playlist');
+              if (response.data['status'] == 1) {
+                final cacheData = {
+                  'data': response.data,
+                  'timestamp': DateTime.now().millisecondsSinceEpoch,
+                };
+                await _updateCache(_playlistsCacheKey, cacheData);
+              }
+            } catch (e) {
+              print('后台刷新歌单缓存失败: $e');
+            }
+          });
           return {
-            'info': decoded['info'] as List,
-            'list_count': decoded['list_count'],
+            'info': cachedData['data']['info'] as List,
+            'list_count': cachedData['data']['list_count'],
           };
         }
       }
 
       // 从服务器获取新数据
       final response = await _dio.get('/user/playlist');
-      print(response.data);
       if (response.data['status'] == 1) {
-        final result = {
+        final cacheData = {
+          'data': response.data,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        };
+        await _updateCache(_playlistsCacheKey, cacheData);
+        return {
           'info': response.data['data']['info'] as List,
           'list_count': response.data['data']['list_count'],
         };
-
-        // 更新缓存
-        await _prefs.setString(_playlistsCacheKey, json.encode(result));
-
-        return result;
-      } else {
-        throw Exception(response.data['data'] ?? '获取用户歌单失败');
       }
-    } on DioException catch (e) {
-      throw _handleDioError(e);
+      throw Exception(response.data['data'] ?? '获取用户歌单失败');
+    } catch (e) {
+      // 如果请求失败但有缓存，返回缓存
+      final cachedData = _getValidCache(_playlistsCacheKey);
+      if (cachedData != null) {
+        return {
+          'info': cachedData['data']['info'] as List,
+          'list_count': cachedData['data']['list_count'],
+        };
+      }
+      rethrow;
     }
   }
 
@@ -392,17 +411,159 @@ class ApiService {
   }
 
   /// 获取最近播放记录
-  Future<RecentSongsResponse> getRecentSongs() async {
+  Future<RecentSongsResponse> getRecentSongs(
+      {bool forceRefresh = false}) async {
     try {
-      final response = await _dio.get('/lastest/songs/listen');
-
-      if (response.data['status'] != 1) {
-        throw Exception(response.data['errmsg'] ?? '获取最近播放记录失败');
+      // 尝试从缓存获取
+      if (!forceRefresh) {
+        final cachedData = _getValidCache(_recentSongsCacheKey);
+        if (cachedData != null) {
+          // 在后台刷新缓存
+          _refreshCacheInBackground(
+              _recentSongsCacheKey, () => _fetchRecentSongs());
+          return RecentSongsResponse.fromJson(cachedData);
+        }
       }
 
-      return RecentSongsResponse.fromJson(response.data);
+      // 从服务器获取新数据
+      return await _fetchRecentSongs();
     } catch (e) {
+      // 如果请求失败但有缓存，返回缓存
+      final cachedData = _getValidCache(_recentSongsCacheKey);
+      if (cachedData != null) {
+        return RecentSongsResponse.fromJson(cachedData);
+      }
       throw Exception('获取最近播放记录失败: $e');
+    }
+  }
+
+  // 从服务器获取最近播放数据
+  Future<RecentSongsResponse> _fetchRecentSongs() async {
+    final response = await _dio.get('/lastest/songs/listen');
+    if (response.data['status'] == 1) {
+      final Map<String, dynamic> cacheData = {
+        'data': response.data,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+      // 更新缓存
+      await _updateCache(_recentSongsCacheKey, cacheData);
+      return RecentSongsResponse.fromJson(response.data);
+    } else {
+      throw Exception(response.data['errmsg'] ?? '获取最近播放记录失败');
+    }
+  }
+
+  // 获取有效的缓存数据
+  Map<String, dynamic>? _getValidCache(String key) {
+    try {
+      final cachedString = _prefs.getString(key);
+      if (cachedString != null) {
+        final cached = json.decode(cachedString);
+        final timestamp = cached['timestamp'] ?? 0;
+
+        // 检查缓存是否过期
+        if (DateTime.now().millisecondsSinceEpoch - timestamp <
+            _cacheExpiration.inMilliseconds) {
+          if (cached['data'] != null) {
+            return cached['data']; // 直接返回原始响应数据
+          }
+        }
+      }
+    } catch (e) {
+      print('读取缓存失败: $e');
+    }
+    return null;
+  }
+
+  // 更新缓存
+  Future<void> _updateCache(String key, Map<String, dynamic> data) async {
+    try {
+      // 确保数据中包含时间戳
+      if (!data.containsKey('timestamp')) {
+        data['timestamp'] = DateTime.now().millisecondsSinceEpoch;
+      }
+
+      final String jsonData = json.encode(data);
+      await _prefs.setString(key, jsonData);
+    } catch (e) {
+      print('更新缓存失败: $e');
+    }
+  }
+
+  // 在后台刷新缓存，带重试机制
+  Future<void> _refreshCacheInBackground(
+      String key, Future<dynamic> Function() fetchData) async {
+    Future.delayed(Duration.zero, () async {
+      int retryCount = 0;
+      while (retryCount < _maxRetries) {
+        try {
+          await fetchData();
+          break; // 成功后跳出循环
+        } catch (e) {
+          retryCount++;
+          if (retryCount >= _maxRetries) {
+            print('后台刷新缓存失败 ($retryCount/$_maxRetries): $e');
+            break;
+          }
+          // 等待一段时间后重试
+          await Future.delayed(Duration(seconds: retryCount * 2));
+        }
+      }
+    });
+  }
+
+  // 获取缓存状态
+  Future<Map<String, dynamic>> getCacheStatus() async {
+    try {
+      final playlistsCacheStr = _prefs.getString(_playlistsCacheKey);
+      final recentSongsCacheStr = _prefs.getString(_recentSongsCacheKey);
+
+      final playlistsCache =
+          playlistsCacheStr != null ? json.decode(playlistsCacheStr) : null;
+      final recentSongsCache =
+          recentSongsCacheStr != null ? json.decode(recentSongsCacheStr) : null;
+
+      return {
+        'playlists': {
+          'hasCache': playlistsCache != null,
+          'timestamp': playlistsCache?['timestamp'],
+          'isValid': _isValidCache(playlistsCache),
+        },
+        'recentSongs': {
+          'hasCache': recentSongsCache != null,
+          'timestamp': recentSongsCache?['timestamp'],
+          'isValid': _isValidCache(recentSongsCache),
+        },
+      };
+    } catch (e) {
+      print('获取缓存状态失败: $e');
+      return {
+        'playlists': {'hasCache': false, 'isValid': false},
+        'recentSongs': {'hasCache': false, 'isValid': false},
+      };
+    }
+  }
+
+  // 检查缓存是否有效
+  bool _isValidCache(Map<String, dynamic>? cache) {
+    if (cache == null) return false;
+    final timestamp = cache['timestamp'] ?? 0;
+    return DateTime.now().millisecondsSinceEpoch - timestamp <
+        _cacheExpiration.inMilliseconds;
+  }
+
+  // 清除指定缓存
+  Future<void> clearCache(String key) async {
+    await _prefs.remove(key);
+  }
+
+  // 清除过期缓存
+  Future<void> clearExpiredCache() async {
+    final keys = [_playlistsCacheKey, _recentSongsCacheKey];
+    for (final key in keys) {
+      if (_getValidCache(key) == null) {
+        await clearCache(key);
+      }
     }
   }
 

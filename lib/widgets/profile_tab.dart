@@ -15,66 +15,76 @@ class ProfileTab extends StatefulWidget {
   State<ProfileTab> createState() => _ProfileTabState();
 }
 
-class _ProfileTabState extends State<ProfileTab> {
-  bool _isLoading = false;
+class _ProfileTabState extends State<ProfileTab>
+    with AutomaticKeepAliveClientMixin {
   List<Playlist> _playlists = [];
   int _playlistCount = 0;
   Playlist _likedPlaylist = Playlist.empty();
+  bool _isFirstLoad = true;
 
   @override
-  void initState() {
-    super.initState();
-    _fetchUserData();
-  }
+  bool get wantKeepAlive => true;
 
-  Future<void> _fetchUserData() async {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     final state = context.read<AuthBloc>().state;
-    if (state is! AuthAuthenticated) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      await Future.wait([
-        // _fetchUserInfo(),
-        _fetchPlaylists(),
-      ]);
-    } finally {
-      setState(() => _isLoading = false);
+    // 只在第一次加载时从缓存获取数据
+    if (_isFirstLoad && state is AuthAuthenticated) {
+      _isFirstLoad = false;
+      _loadFromCache();
     }
   }
 
-  Future<void> _fetchPlaylists() async {
+  // 从缓存加载数据
+  Future<void> _loadFromCache() async {
+    try {
+      final apiService = context.read<ApiService>();
+      final response = await apiService.getUserPlaylists();
+      _updatePlaylistsData(response);
+    } catch (e) {
+      print('从缓存加载数据失败: $e');
+    }
+  }
+
+  // 从服务器刷新数据
+  Future<void> _refreshFromServer() async {
     try {
       final apiService = context.read<ApiService>();
       final response = await apiService.getUserPlaylists(forceRefresh: true);
-
-      // 解析所有歌单
-      final List<Playlist> allPlaylists = (response['info'] as List)
-          .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
-          .toList();
-
-      // 找出"我喜欢"歌单
-      final likedPlaylist = allPlaylists.firstWhere(
-        (playlist) => playlist.name == '我喜欢',
-        orElse: () => Playlist.empty(),
-      );
-
-      // 过滤掉"我喜欢"歌单，并倒序排列其他歌单
-      final otherPlaylists = allPlaylists
-          .where((playlist) => playlist.name != '我喜欢')
-          .toList()
-        ..sort((a, b) => b.createTime.compareTo(a.createTime));
-
-      setState(() {
-        _likedPlaylist = likedPlaylist;
-        _playlists = otherPlaylists;
-        _playlistCount = otherPlaylists.length;
-      });
+      _updatePlaylistsData(response);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('获取歌单失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刷新歌单失败: $e')),
+        );
+      }
     }
+  }
+
+  // 更新歌单数据
+  void _updatePlaylistsData(Map<String, dynamic> response) {
+    if (!mounted) return;
+
+    final List<Playlist> allPlaylists = (response['info'] as List)
+        .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
+        .toList();
+
+    final likedPlaylist = allPlaylists.firstWhere(
+      (playlist) => playlist.name == '我喜欢',
+      orElse: () => Playlist.empty(),
+    );
+
+    final otherPlaylists = allPlaylists
+        .where((playlist) => playlist.name != '我喜欢')
+        .toList()
+      ..sort((a, b) => b.createTime.compareTo(a.createTime));
+
+    setState(() {
+      _likedPlaylist = likedPlaylist;
+      _playlists = otherPlaylists;
+      _playlistCount = otherPlaylists.length;
+    });
   }
 
   void _handleLoginTap() {
@@ -82,7 +92,7 @@ class _ProfileTabState extends State<ProfileTab> {
       // 从登录页面返回后，检查是否需要刷新用户信息
       final state = context.read<AuthBloc>().state;
       if (state is AuthAuthenticated) {
-        _fetchUserData();
+        _refreshFromServer();
       }
     });
   }
@@ -117,215 +127,95 @@ class _ProfileTabState extends State<ProfileTab> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) {
-        final bool isAuthenticated = state is AuthAuthenticated;
-        final user = isAuthenticated ? (state).user : null;
+    super.build(context); // 必须调用 super.build
 
-        return Scaffold(
-          body: RefreshIndicator(
-            onRefresh: _fetchUserData,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.blue[300]!,
-                    Colors.blue[100]!,
+    final state = context.watch<AuthBloc>().state;
+    final isAuthenticated = state is AuthAuthenticated;
+    final user = isAuthenticated ? (state).user : null;
+
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _refreshFromServer,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.blue[300]!,
+                Colors.blue[100]!,
+              ],
+            ),
+          ),
+          child: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                elevation: 0,
+                backgroundColor: Colors.transparent,
+                title: Row(
+                  children: [
+                    const Text(
+                      '我的',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.search,
+                                color: Colors.white, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              '搜索音乐、歌手、歌词',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              child: CustomScrollView(
-                slivers: [
-                  SliverAppBar(
-                    elevation: 0,
-                    backgroundColor: Colors.transparent,
-                    title: Row(
-                      children: [
-                        const Text(
-                          '我的',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Container(
-                            height: 36,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.search,
-                                    color: Colors.white, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '搜索音乐、歌手、歌词',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                actions: [
+                  if (isAuthenticated)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.logout,
+                        color: Colors.white,
+                      ),
+                      onPressed: _handleLogout,
                     ),
-                    actions: [
-                      if (isAuthenticated)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.logout,
-                            color: Colors.white,
-                          ),
-                          onPressed: _handleLogout,
-                        ),
-                    ],
-                  ),
-                  SliverToBoxAdapter(
-                    child: Column(
-                      children: [
-                        if (_isLoading)
-                          const Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        // 用户信息卡片
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: isAuthenticated ? null : _handleLoginTap,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Card(
-                              margin: const EdgeInsets.all(16),
-                              elevation: 4,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 30,
-                                      backgroundColor: Colors.grey[200],
-                                      backgroundImage: user?.pic != null
-                                          ? NetworkImage(user!.pic!)
-                                          : null,
-                                      child: user?.pic == null
-                                          ? const Icon(Icons.person,
-                                              color: Colors.grey, size: 42)
-                                          : null,
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                isAuthenticated
-                                                    ? user!.nickname
-                                                    : '立即登录',
-                                                style: const TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              if (isAuthenticated) ...[
-                                                const SizedBox(width: 8),
-                                                Container(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 2,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    gradient: user!.isVip
-                                                        ? LinearGradient(
-                                                            colors: [
-                                                              Colors
-                                                                  .amber[700]!,
-                                                              Colors
-                                                                  .amber[400]!,
-                                                            ],
-                                                          )
-                                                        : null,
-                                                    color: user.isVip
-                                                        ? null
-                                                        : Colors.grey[300],
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            12),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        Icons.workspace_premium,
-                                                        color: user.isVip
-                                                            ? Colors.white
-                                                            : Colors.grey[600],
-                                                        size: 14,
-                                                      ),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        'VIP',
-                                                        style: TextStyle(
-                                                          color: user.isVip
-                                                              ? Colors.white
-                                                              : Colors
-                                                                  .grey[600],
-                                                          fontSize: 12,
-                                                        ),
-                                                      ),
-                                                      if (user.isVip)
-                                                        Text(
-                                                          '还剩${DateTime.parse(user.vipEndTime!).difference(DateTime.now()).inDays}天',
-                                                          style: TextStyle(
-                                                            color: Colors.white,
-                                                            fontSize: 12,
-                                                          ),
-                                                        ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                          if (isAuthenticated) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'ID: ${user!.userId}',
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // 功能区域卡片
-                        Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                ],
+              ),
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    if (state is AuthLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    // 用户信息卡片
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: isAuthenticated ? null : _handleLoginTap,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Card(
+                          margin: const EdgeInsets.all(16),
                           elevation: 4,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -333,197 +223,311 @@ class _ProfileTabState extends State<ProfileTab> {
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
-                                _buildFeatureItem(
-                                  icon: Icons.favorite,
-                                  label: '我喜欢',
-                                  count: _likedPlaylist.count.toString(),
+                                CircleAvatar(
+                                  radius: 30,
+                                  backgroundColor: Colors.grey[200],
+                                  backgroundImage: user?.pic != null
+                                      ? NetworkImage(user!.pic!)
+                                      : null,
+                                  child: user?.pic == null
+                                      ? const Icon(Icons.person,
+                                          color: Colors.grey, size: 42)
+                                      : null,
                                 ),
-                                _buildFeatureItem(
-                                  icon: Icons.access_time,
-                                  label: '最近',
-                                  count: isAuthenticated ? '30' : '0',
-                                ),
-                                _buildFeatureItem(
-                                  icon: Icons.download_outlined,
-                                  label: '本地',
-                                  count: '0',
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            isAuthenticated
+                                                ? user!.nickname
+                                                : '立即登录',
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          if (isAuthenticated) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                gradient: user!.isVip
+                                                    ? LinearGradient(
+                                                        colors: [
+                                                          Colors.amber[700]!,
+                                                          Colors.amber[400]!,
+                                                        ],
+                                                      )
+                                                    : null,
+                                                color: user.isVip
+                                                    ? null
+                                                    : Colors.grey[300],
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.workspace_premium,
+                                                    color: user.isVip
+                                                        ? Colors.white
+                                                        : Colors.grey[600],
+                                                    size: 14,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'VIP',
+                                                    style: TextStyle(
+                                                      color: user.isVip
+                                                          ? Colors.white
+                                                          : Colors.grey[600],
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  if (user.isVip)
+                                                    Text(
+                                                      '还剩${DateTime.parse(user.vipEndTime!).difference(DateTime.now()).inDays}天',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      if (isAuthenticated) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'ID: ${user!.userId}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-
-                        const SizedBox(height: 24),
-
-                        // 最近播放区域
-                        if (isAuthenticated) ...[
-                          const RecentSongsSection(),
-                          const SizedBox(height: 24),
-                        ],
-
-                        // 创建的歌单卡片
-                        Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            children: [
-                              ListTile(
-                                title: Row(
-                                  children: [
-                                    const Text('我的歌单'),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      isAuthenticated
-                                          ? _playlistCount.toString()
-                                          : '0',
-                                      style: TextStyle(
-                                        color: Colors.grey[600],
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                trailing: const Icon(Icons.add),
-                                onTap: isAuthenticated
-                                    ? () {
-                                        // TODO: 添加歌单功能
-                                      }
-                                    : () => _handleLoginTap(),
-                              ),
-                              const Divider(height: 1),
-                              if (isAuthenticated) ...[
-                                for (var playlist in _playlists)
-                                  ListTile(
-                                    leading: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
-                                        color: Colors.grey[100],
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: playlist.pic.isNotEmpty
-                                            ? Image.network(
-                                                ImageUtils.getThumbnailUrl(
-                                                    playlist.pic),
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error,
-                                                    stackTrace) {
-                                                  return const Icon(
-                                                    Icons.music_note,
-                                                    color: Colors.grey,
-                                                  );
-                                                },
-                                              )
-                                            : Icon(
-                                                Icons.music_note,
-                                                color: Colors.grey[400],
-                                              ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      playlist.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text('${playlist.count}首'),
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => MusicListScreen(
-                                            type: MusicListType.favorite,
-                                            title: playlist.name,
-                                            playlist: playlist,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-                        // 已购音乐卡片
-                        Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            children: [
-                              ListTile(
-                                title: const Text('已购音乐'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: isAuthenticated
-                                    ? () {
-                                        // TODO: 跳转到已购音乐页面
-                                      }
-                                    : () => _handleLoginTap(),
-                              ),
-                              const Divider(height: 1),
-                              ListTile(
-                                leading: Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: Colors.purple[50],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(Icons.album,
-                                      color: Colors.purple[300]),
-                                ),
-                                title: const Text('数字专辑'),
-                                subtitle: const Text('0张'),
-                                onTap: isAuthenticated
-                                    ? () {
-                                        // TODO: 跳转到数字专辑列表
-                                      }
-                                    : () => _handleLoginTap(),
-                              ),
-                              ListTile(
-                                leading: Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: Colors.green[50],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(Icons.music_note,
-                                      color: Colors.green[300]),
-                                ),
-                                title: const Text('付费单曲'),
-                                subtitle: const Text('0首'),
-                                onTap: isAuthenticated
-                                    ? () {
-                                        // TODO: 跳转到付费单曲列表
-                                      }
-                                    : () => _handleLoginTap(),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(
-                          height: 30,
-                        )
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+
+                    // 功能区域卡片
+                    Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildFeatureItem(
+                              icon: Icons.favorite,
+                              label: '我喜欢',
+                              count: _likedPlaylist.count.toString(),
+                            ),
+                            _buildFeatureItem(
+                              icon: Icons.access_time,
+                              label: '最近',
+                              count: isAuthenticated ? '30' : '0',
+                            ),
+                            _buildFeatureItem(
+                              icon: Icons.download_outlined,
+                              label: '本地',
+                              count: '0',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // 最近播放区域
+                    if (isAuthenticated) ...[
+                      const RecentSongsSection(),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // 创建的歌单卡片
+                    Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          ListTile(
+                            title: Row(
+                              children: [
+                                const Text('我的歌单'),
+                                const SizedBox(width: 8),
+                                Text(
+                                  isAuthenticated
+                                      ? _playlistCount.toString()
+                                      : '0',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: const Icon(Icons.add),
+                            onTap: isAuthenticated
+                                ? () {
+                                    // TODO: 添加歌单功能
+                                  }
+                                : () => _handleLoginTap(),
+                          ),
+                          const Divider(height: 1),
+                          if (isAuthenticated) ...[
+                            for (var playlist in _playlists)
+                              ListTile(
+                                leading: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.grey[100],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: playlist.pic.isNotEmpty
+                                        ? Image.network(
+                                            ImageUtils.getThumbnailUrl(
+                                                playlist.pic),
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                              return const Icon(
+                                                Icons.music_note,
+                                                color: Colors.grey,
+                                              );
+                                            },
+                                          )
+                                        : Icon(
+                                            Icons.music_note,
+                                            color: Colors.grey[400],
+                                          ),
+                                  ),
+                                ),
+                                title: Text(
+                                  playlist.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text('${playlist.count}首'),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => MusicListScreen(
+                                        type: MusicListType.favorite,
+                                        title: playlist.name,
+                                        playlist: playlist,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                    // 已购音乐卡片
+                    Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          ListTile(
+                            title: const Text('已购音乐'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: isAuthenticated
+                                ? () {
+                                    // TODO: 跳转到已购音乐页面
+                                  }
+                                : () => _handleLoginTap(),
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.purple[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child:
+                                  Icon(Icons.album, color: Colors.purple[300]),
+                            ),
+                            title: const Text('数字专辑'),
+                            subtitle: const Text('0张'),
+                            onTap: isAuthenticated
+                                ? () {
+                                    // TODO: 跳转到数字专辑列表
+                                  }
+                                : () => _handleLoginTap(),
+                          ),
+                          ListTile(
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(Icons.music_note,
+                                  color: Colors.green[300]),
+                            ),
+                            title: const Text('付费单曲'),
+                            subtitle: const Text('0首'),
+                            onTap: isAuthenticated
+                                ? () {
+                                    // TODO: 跳转到付费单曲列表
+                                  }
+                                : () => _handleLoginTap(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 30,
+                    )
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
