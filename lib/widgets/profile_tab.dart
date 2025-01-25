@@ -5,6 +5,8 @@ import '../bloc/auth/auth_bloc.dart';
 import '../services/api_service.dart';
 import '../models/playlist.dart';
 import 'music_list_screen.dart';
+import 'recent_songs_section.dart';
+import '../pages/recent_songs_page.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -17,6 +19,7 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _isLoading = false;
   List<Playlist> _playlists = [];
   int _playlistCount = 0;
+  Playlist _likedPlaylist = Playlist.empty();
 
   @override
   void initState() {
@@ -45,13 +48,27 @@ class _ProfileTabState extends State<ProfileTab> {
       final apiService = context.read<ApiService>();
       final response = await apiService.getUserPlaylists(forceRefresh: true);
 
-      final List<Playlist> playlists = (response['info'] as List)
+      // 解析所有歌单
+      final List<Playlist> allPlaylists = (response['info'] as List)
           .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
           .toList();
 
+      // 找出"我喜欢"歌单
+      final likedPlaylist = allPlaylists.firstWhere(
+        (playlist) => playlist.name == '我喜欢',
+        orElse: () => Playlist.empty(),
+      );
+
+      // 过滤掉"我喜欢"歌单，并倒序排列其他歌单
+      final otherPlaylists = allPlaylists
+          .where((playlist) => playlist.name != '我喜欢')
+          .toList()
+        ..sort((a, b) => b.createTime.compareTo(a.createTime));
+
       setState(() {
-        _playlists = playlists;
-        _playlistCount = response['list_count'] ?? 0;
+        _likedPlaylist = likedPlaylist;
+        _playlists = otherPlaylists;
+        _playlistCount = otherPlaylists.length;
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,37 +76,6 @@ class _ProfileTabState extends State<ProfileTab> {
       );
     }
   }
-
-  // Future<void> _fetchUserInfo() async {
-  //   try {
-  //     final apiService = context.read<ApiService>();
-  //     final userDetail = await apiService.getUserDetail();
-
-  //     if (userDetail['status'] == 1) {
-  //       final data = userDetail['data'];
-  //       final vipInfo = {
-  //         'isVip': data['su_vip_begin_time'] != null &&
-  //             data['su_vip_end_time'] != null &&
-  //             DateTime.now()
-  //                 .isAfter(DateTime.parse(data['su_vip_begin_time'])) &&
-  //             DateTime.now().isBefore(DateTime.parse(data['su_vip_end_time'])),
-  //         'beginTime': data['su_vip_begin_time'],
-  //         'endTime': data['su_vip_end_time'],
-  //       };
-
-  //       context.read<AuthBloc>().add(
-  //             AuthUpdateUserInfo(
-  //               userDetail: userDetail,
-  //               vipInfo: vipInfo,
-  //             ),
-  //           );
-  //     }
-  //   } catch (e) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(content: Text('获取用户信息失败: $e')),
-  //     );
-  //   }
-  // }
 
   void _handleLoginTap() {
     Navigator.of(context).pushNamed('/login').then((_) {
@@ -350,14 +336,14 @@ class _ProfileTabState extends State<ProfileTab> {
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
                                 _buildFeatureItem(
-                                  icon: Icons.favorite_border,
-                                  label: '收藏',
-                                  count: isAuthenticated ? '992' : '0',
+                                  icon: Icons.favorite,
+                                  label: '我喜欢',
+                                  count: _likedPlaylist.count.toString(),
                                 ),
                                 _buildFeatureItem(
                                   icon: Icons.access_time,
                                   label: '最近',
-                                  count: isAuthenticated ? '115' : '0',
+                                  count: isAuthenticated ? '30' : '0',
                                 ),
                                 _buildFeatureItem(
                                   icon: Icons.download_outlined,
@@ -370,33 +356,13 @@ class _ProfileTabState extends State<ProfileTab> {
                         ),
 
                         const SizedBox(height: 24),
-                        // 听歌时光机卡片
-                        Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: ListTile(
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.blue[50],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child:
-                                  Icon(Icons.history, color: Colors.blue[600]),
-                            ),
-                            title: const Text('我的听歌排行'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              // TODO: 实现听歌排行功能
-                            },
-                          ),
-                        ),
 
-                        const SizedBox(height: 24),
+                        // 最近播放区域
+                        if (isAuthenticated) ...[
+                          const RecentSongsSection(),
+                          const SizedBox(height: 24),
+                        ],
+
                         // 创建的歌单卡片
                         Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -574,30 +540,49 @@ class _ProfileTabState extends State<ProfileTab> {
           return;
         }
 
-        MusicListType type;
-        switch (label) {
-          case '收藏':
-            type = MusicListType.favorite;
-            break;
-          case '最近':
-            type = MusicListType.recent;
-            break;
-          case '本地':
-            type = MusicListType.local;
-            break;
-          default:
-            return;
-        }
+        // 处理点击事件
+        if (label == '我喜欢') {
+          // 如果有"我喜欢"歌单，导航到歌单页面
+          if (_likedPlaylist.globalCollectionId.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MusicListScreen(
+                  type: MusicListType.favorite,
+                  title: '我喜欢',
+                  playlist: _likedPlaylist,
+                ),
+              ),
+            );
+          }
+        } else {
+          MusicListType type;
+          switch (label) {
+            case '最近':
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RecentSongsPage(),
+                ),
+              );
+              return;
+            case '本地':
+              type = MusicListType.local;
+              break;
+            default:
+              return;
+          }
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MusicListScreen(
-              type: type,
-              title: label,
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => MusicListScreen(
+                type: type,
+                title: label,
+              ),
             ),
-          ),
-        );
+          );
+        }
       },
       child: Column(
         children: [
@@ -608,9 +593,12 @@ class _ProfileTabState extends State<ProfileTab> {
               color: Colors.blue[50],
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: Colors.blue[600]),
+            child: Icon(icon,
+                color: icon == Icons.favorite
+                    ? Colors.red[600]
+                    : Colors.blue[600]),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(label),
           Text(
             count,

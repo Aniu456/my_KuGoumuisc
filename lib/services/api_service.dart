@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../models/song.dart';
+import '../models/recent_song.dart';
 
 /// API服务类
 /// 负责处理所有与后端服务器的HTTP请求
@@ -386,6 +388,21 @@ class ApiService {
       throw Exception('获取歌词失败');
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// 获取最近播放记录
+  Future<RecentSongsResponse> getRecentSongs() async {
+    try {
+      final response = await _dio.get('/lastest/songs/listen');
+
+      if (response.data['status'] != 1) {
+        throw Exception(response.data['errmsg'] ?? '获取最近播放记录失败');
+      }
+
+      return RecentSongsResponse.fromJson(response.data);
+    } catch (e) {
+      throw Exception('获取最近播放记录失败: $e');
     }
   }
 

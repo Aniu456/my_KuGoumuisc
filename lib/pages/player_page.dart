@@ -204,19 +204,10 @@ class PlayerPage extends StatelessWidget {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(screenWidth / 20),
-                          child: Image.network(
+                          child: ImageUtils.createCachedImage(
                             ImageUtils.getLargeUrl(currentSong?.cover ?? ''),
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[100],
-                                child: const Icon(
-                                  Icons.music_note,
-                                  size: 80,
-                                  color: Colors.black12,
-                                ),
-                              );
-                            },
+                            width: screenWidth - 64,
+                            height: screenWidth - 64,
                           ),
                         ),
                       ),

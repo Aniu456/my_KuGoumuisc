@@ -32,19 +32,10 @@ class SongListItem extends StatelessWidget {
       ),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: Image.network(
+        child: ImageUtils.createCachedImage(
           ImageUtils.getThumbnailUrl(song.cover),
           width: 50,
           height: 50,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              width: 50,
-              height: 50,
-              color: Colors.grey[300],
-              child: const Icon(Icons.music_note, color: Colors.white),
-            );
-          },
         ),
       ),
       onTap: () => _handleTap(context),
