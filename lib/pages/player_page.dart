@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui';
 import '../services/player_service.dart';
 import 'package:marquee/marquee.dart';
 import '../utils/image_utils.dart';
@@ -18,6 +19,13 @@ class PlayerPage extends StatelessWidget {
     }
   }
 
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
   @override
   Widget build(BuildContext context) {
     final playerService = context.watch<PlayerService>();
@@ -25,9 +33,35 @@ class PlayerPage extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: const Color.fromRGBO(16, 17, 30, 1),
       body: Stack(
         children: [
+          // 背景图片层
+          if (currentSong?.cover != null) ...[
+            Positioned.fill(
+              child: ClipRect(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ImageUtils.createCachedImage(
+                        ImageUtils.getLargeUrl(currentSong!.cover),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    // 模糊效果层
+                    Positioned.fill(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                        child: Container(
+                          color: Colors.black.withOpacity(0.2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           // 白色背景部分
           Positioned(
             left: 0,
@@ -44,6 +78,7 @@ class PlayerPage extends StatelessWidget {
               ),
             ),
           ),
+
           // 主要内容
           SafeArea(
             child: Column(
@@ -67,6 +102,7 @@ class PlayerPage extends StatelessWidget {
                     ],
                   ),
                 ),
+
                 // 歌曲信息
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -179,6 +215,7 @@ class PlayerPage extends StatelessWidget {
                     ],
                   ),
                 ),
+
                 // 专辑封面
                 Expanded(
                   child: Column(
@@ -214,6 +251,7 @@ class PlayerPage extends StatelessWidget {
                     ],
                   ),
                 ),
+
                 // 底部控制区
                 Container(
                   padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -354,12 +392,5 @@ class PlayerPage extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
   }
 }
