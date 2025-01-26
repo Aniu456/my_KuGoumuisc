@@ -11,6 +11,7 @@ enum MusicListType {
   favorite,
   recent,
   local,
+  playlist,
 }
 
 enum SortOrder {
@@ -105,6 +106,9 @@ class _MusicListScreenState extends State<MusicListScreen> {
           case MusicListType.local:
             // TODO: 加载本地音乐
             break;
+          case MusicListType.playlist:
+            // TODO: Handle this case.
+            throw UnimplementedError();
         }
       }
     } catch (e) {
