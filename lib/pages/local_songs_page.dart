@@ -18,6 +18,7 @@ class LocalSongsPage extends StatefulWidget {
 class _LocalSongsPageState extends State<LocalSongsPage> {
   List<SongCache> _cachedSongs = [];
   bool _isLoading = true;
+  bool _sortByPlayCount = false;
 
   @override
   void initState() {
@@ -29,12 +30,11 @@ class _LocalSongsPageState extends State<LocalSongsPage> {
     try {
       final cacheManager = await AudioCacheManager.getInstance();
       final songs = await cacheManager.getCachedSongs();
-      // 按最后播放时间排序
-      songs.sort((a, b) => b.lastPlayTime.compareTo(a.lastPlayTime));
 
       if (mounted) {
         setState(() {
           _cachedSongs = songs;
+          _sortSongs();
           _isLoading = false;
         });
       }
@@ -48,25 +48,72 @@ class _LocalSongsPageState extends State<LocalSongsPage> {
     }
   }
 
+  void _sortSongs() {
+    if (_sortByPlayCount) {
+      _cachedSongs.sort((a, b) => b.playCount.compareTo(a.playCount));
+    } else {
+      _cachedSongs.sort((a, b) => b.lastPlayTime.compareTo(a.lastPlayTime));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          '本地音乐',
-          style: TextStyle(fontSize: 16),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: Column(
+          children: [
+            const Text(
+              '本地音乐',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            if (_cachedSongs.isNotEmpty)
+              Text(
+                '${_cachedSongs.length}首歌曲',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+          ],
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+          color: Colors.black87,
+          onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: Icon(
+              Icons.sort,
+              size: 22,
+              color: _sortByPlayCount
+                  ? Theme.of(context).primaryColor
+                  : Colors.black87,
+            ),
             onPressed: () {
               setState(() {
-                _isLoading = true;
+                _sortByPlayCount = !_sortByPlayCount;
+                _sortSongs();
               });
-              _loadCachedSongs();
             },
           ),
+          const SizedBox(width: 4),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            height: 1,
+            color: Colors.grey[200],
+          ),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

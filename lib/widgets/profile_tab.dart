@@ -778,7 +778,7 @@ class _ProfileTabState extends State<ProfileTab>
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 100),
                   ],
                 ),
               ),

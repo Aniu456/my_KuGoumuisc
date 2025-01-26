@@ -36,9 +36,11 @@ class MusicListScreen extends StatefulWidget {
   State<MusicListScreen> createState() => _MusicListScreenState();
 }
 
-class _MusicListScreenState extends State<MusicListScreen> {
+class _MusicListScreenState extends State<MusicListScreen>
+    with SingleTickerProviderStateMixin {
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
+  late AnimationController _rotationController;
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _hasMore = true;
@@ -54,6 +56,10 @@ class _MusicListScreenState extends State<MusicListScreen> {
     super.initState();
     _loadMusicList();
     _setupScrollController();
+    _rotationController = AnimationController(
+      duration: const Duration(seconds: 10),
+      vsync: this,
+    );
   }
 
   void _setupScrollController() {
@@ -69,6 +75,7 @@ class _MusicListScreenState extends State<MusicListScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _rotationController.dispose();
     super.dispose();
   }
 
@@ -293,12 +300,52 @@ class _MusicListScreenState extends State<MusicListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final playerService = context.watch<PlayerService>();
+    final currentSong = playerService.currentSongInfo;
+    final isPlaying = playerService.isPlaying;
+
+    // 控制旋转动画
+    if (isPlaying && !_rotationController.isAnimating) {
+      _rotationController.repeat();
+    } else if (!isPlaying && _rotationController.isAnimating) {
+      _rotationController.stop();
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: Column(
+          children: [
+            Text(
+              widget.title,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 4),
+            if (_filteredSongs.isNotEmpty)
+              Text(
+                '${_filteredSongs.length}首歌曲',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+          ],
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+          color: Colors.black87,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.search, size: 22),
+            color: Colors.black87,
             onPressed: () {
               showSearch(
                 context: context,
@@ -314,82 +361,297 @@ class _MusicListScreenState extends State<MusicListScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.sort),
+            icon: const Icon(Icons.sort, size: 22),
+            color: Colors.black87,
             onPressed: _showSortMenu,
           ),
+          const SizedBox(width: 4),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            height: 1,
+            color: Colors.grey[200],
+          ),
+        ),
       ),
-      body: _isLoading && _currentPage == 1
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadMusicList,
-              child: ListView.builder(
-                controller: _scrollController,
-                itemCount: _filteredSongs.length + (_hasMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _filteredSongs.length) {
-                    return Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Center(
-                        child: _isLoadingMore
-                            ? const CircularProgressIndicator()
-                            : TextButton(
-                                onPressed: _loadMoreSongs,
-                                child: const Text('加载更多'),
-                              ),
-                      ),
-                    );
-                  }
+      body: Stack(
+        children: [
+          _isLoading && _currentPage == 1
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _loadMusicList,
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: _filteredSongs.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == _filteredSongs.length) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Center(
+                            child: _isLoadingMore
+                                ? const CircularProgressIndicator()
+                                : TextButton(
+                                    onPressed: _loadMoreSongs,
+                                    child: const Text('加载更多'),
+                                  ),
+                          ),
+                        );
+                      }
 
-                  final song = _filteredSongs[index];
-                  return ListTile(
-                    leading: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                        color: Colors.grey[100],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: song.cover.isNotEmpty
-                            ? Image.network(
-                                ImageUtils.getThumbnailUrl(song.cover),
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Icon(
+                      final song = _filteredSongs[index];
+                      final isCurrentSong =
+                          currentSong != null && song.hash == currentSong.hash;
+                      return ListTile(
+                        leading: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            color: Colors.grey[100],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: song.cover.isNotEmpty
+                                ? Image.network(
+                                    ImageUtils.getThumbnailUrl(song.cover),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Icon(
+                                        Icons.music_note,
+                                        color: Colors.grey[400],
+                                      );
+                                    },
+                                  )
+                                : Icon(
                                     Icons.music_note,
                                     color: Colors.grey[400],
-                                  );
-                                },
-                              )
-                            : Icon(
-                                Icons.music_note,
-                                color: Colors.grey[400],
-                              ),
-                      ),
-                    ),
-                    title: Text(
-                      song.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            song.artists,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                                  ),
                           ),
                         ),
-                      ],
-                    ),
-                    onTap: () => _playSong(song),
-                  );
-                },
+                        title: Text(
+                          song.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isCurrentSong
+                                ? Theme.of(context).primaryColor
+                                : null,
+                            fontWeight: isCurrentSong ? FontWeight.bold : null,
+                          ),
+                        ),
+                        subtitle: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                song.artists,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isCurrentSong
+                                      ? Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.7)
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        tileColor: isCurrentSong
+                            ? Theme.of(context).primaryColor.withOpacity(0.05)
+                            : null,
+                        onTap: () => _playSong(song),
+                      );
+                    },
+                  ),
+                ),
+          // 底部空间,为悬浮按钮预留位置
+          const SizedBox(height: 80),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 跳转到第一首按钮
+          if (_filteredSongs.isNotEmpty)
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.blue[300]!.withOpacity(0.9),
+                    Colors.blue[400]!.withOpacity(0.9),
+                  ],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    _scrollController.animateTo(
+                      0,
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                  customBorder: const CircleBorder(),
+                  child: const Icon(
+                    Icons.vertical_align_top,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
               ),
             ),
+          const SizedBox(height: 8),
+          // 回到当前播放歌曲按钮
+          if (currentSong != null && _filteredSongs.isNotEmpty)
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.blue[300]!.withOpacity(0.9),
+                    Colors.blue[400]!.withOpacity(0.9),
+                  ],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    final currentIndex = _filteredSongs
+                        .indexWhere((song) => song.hash == currentSong.hash);
+                    if (currentIndex != -1) {
+                      _scrollController.animateTo(
+                        currentIndex * 72.0,
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
+                  customBorder: const CircleBorder(),
+                  child: const Icon(
+                    Icons.my_location,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          // 播放器悬浮按钮
+          if (currentSong != null)
+            Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.blue[400]!,
+                    Colors.blue[600]!,
+                  ],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.8),
+                  width: 4,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const PlayerPage()),
+                    );
+                  },
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 4,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(32),
+                      child: Stack(
+                        children: [
+                          RotationTransition(
+                            turns: _rotationController,
+                            child: Image.network(
+                              ImageUtils.getThumbnailUrl(
+                                  currentSong.cover ?? ''),
+                              width: 65,
+                              height: 65,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                color: Colors.grey[300],
+                                child: const Icon(Icons.music_note,
+                                    color: Colors.white, size: 30),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withOpacity(0.2),
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.2),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
