@@ -473,7 +473,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           ),
                           _buildControlButton(
                             Icons.queue_music,
-                            () {},
+                            () => _showPlaylist(context, playerService),
                             color: Colors.black87,
                           ),
                         ],
@@ -970,12 +970,175 @@ class _PlayerPageState extends State<PlayerPage> {
           onPressed: () => playerService.playNext(),
         ),
         IconButton(
-          icon: const Icon(Icons.playlist_play),
-          onPressed: () {
-            // TODO: 显示播放列表
-          },
+          icon: const Icon(Icons.queue_music),
+          onPressed: () => _showPlaylist(context, playerService),
         ),
       ],
+    );
+  }
+
+  void _showPlaylist(BuildContext context, PlayerService playerService) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 标题栏
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.grey.withOpacity(0.1),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Text(
+                    '当前播放',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '(${playerService.playlist.length}首)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                    splashRadius: 24,
+                  ),
+                ],
+              ),
+            ),
+            // 播放列表
+            Flexible(
+              child: ListenableBuilder(
+                listenable: playerService,
+                builder: (context, _) {
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: playerService.playlist.length,
+                    itemBuilder: (context, index) {
+                      final song = playerService.playlist[index];
+                      final isPlaying =
+                          song.hash == playerService.currentSong?.hash;
+
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () async {
+                            try {
+                              await playerService.setCurrentSong(song);
+                              await playerService.startPlayback();
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('播放失败: $e')),
+                                );
+                              }
+                            }
+                          },
+                          child: Container(
+                            color: isPlaying
+                                ? Theme.of(context)
+                                    .primaryColor
+                                    .withOpacity(0.05)
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 8),
+                              child: Row(
+                                children: [
+                                  // 序号或播放状态
+                                  SizedBox(
+                                    width: 32,
+                                    child: isPlaying
+                                        ? Icon(
+                                            Icons.volume_up,
+                                            color:
+                                                Theme.of(context).primaryColor,
+                                            size: 18,
+                                          )
+                                        : Text(
+                                            '${index + 1}',
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // 歌曲信息
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          song.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: isPlaying
+                                                ? Theme.of(context).primaryColor
+                                                : null,
+                                            fontWeight: isPlaying
+                                                ? FontWeight.w500
+                                                : null,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          song.singerName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isPlaying
+                                                ? Theme.of(context)
+                                                    .primaryColor
+                                                    .withOpacity(0.7)
+                                                : Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

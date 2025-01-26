@@ -7,6 +7,7 @@ import '../models/playlist.dart';
 import 'music_list_screen.dart';
 import 'recent_songs_section.dart';
 import '../pages/recent_songs_page.dart';
+import '../pages/search_page.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -165,26 +166,37 @@ class _ProfileTabState extends State<ProfileTab>
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.search,
-                                color: Colors.white, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              '搜索音乐、歌手、歌词',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 14,
-                              ),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          print('顶部搜索框被点击');
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const SearchPage(),
                             ),
-                          ],
+                          );
+                        },
+                        child: Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.search,
+                                  color: Colors.white, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                '搜索音乐、歌手、歌词',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/recent_song.dart';
+import '../models/search_response.dart';
 
 /// API服务类
 /// 负责处理所有与后端服务器的HTTP请求
@@ -630,6 +631,31 @@ class ApiService {
       _clearAuthData();
     } catch (e) {
       print('退出登录过程中出错: $e');
+      rethrow;
+    }
+  }
+
+  /// 搜索歌曲
+  /// @param keyword 搜索关键词
+  /// @param page 页码，默认1
+  /// @param pageSize 每页数量，默认20
+  /// @return 返回搜索结果
+  Future<SearchResponse> searchSongs(String keyword,
+      {int page = 1, int pageSize = 20}) async {
+    try {
+      final response = await _dio.get('/search', queryParameters: {
+        'keywords': keyword,
+        'page': page,
+        'pagesize': pageSize,
+      });
+      print(response.data);
+      if (response.data['status'] == 1) {
+        return SearchResponse.fromJson(response.data);
+      } else {
+        throw Exception(response.data['error_msg'] ?? '搜索失败');
+      }
+    } catch (e) {
+      print('搜索歌曲失败: $e');
       rethrow;
     }
   }

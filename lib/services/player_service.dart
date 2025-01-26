@@ -2,7 +2,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/song.dart';
 import 'api_service.dart';
-import 'player_streams.dart';
 
 enum PlayMode {
   loop, // 循环播放
@@ -10,12 +9,13 @@ enum PlayMode {
   sequence // 顺序播放
 }
 
-class PlayerService extends ChangeNotifier with PlayerStreams {
+class PlayerService extends ChangeNotifier {
   final ApiService _apiService;
   final AudioPlayer _audioPlayer;
 
   Song? _currentSong;
   List<Song> _playlist = [];
+  List<Song> get playlist => _playlist;
   int _currentIndex = -1;
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
@@ -30,9 +30,6 @@ class PlayerService extends ChangeNotifier with PlayerStreams {
 
   PlayMode _playMode = PlayMode.sequence;
   PlayMode get playMode => _playMode;
-
-  @override
-  AudioPlayer get audioPlayer => _audioPlayer;
 
   PlayerService(this._apiService) : _audioPlayer = AudioPlayer() {
     _setupAudioPlayer();
