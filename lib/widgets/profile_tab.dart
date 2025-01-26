@@ -552,7 +552,7 @@ class _ProfileTabState extends State<ProfileTab>
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) => MusicListScreen(
-                                            type: MusicListType.favorite,
+                                            type: MusicListType.playlist,
                                             title: playlist.name,
                                             playlist: playlist,
                                           ),

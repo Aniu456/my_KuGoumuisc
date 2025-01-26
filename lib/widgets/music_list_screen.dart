@@ -93,7 +93,20 @@ class _MusicListScreenState extends State<MusicListScreen>
 
       switch (widget.type) {
         case MusicListType.favorite:
-          // TODO: 加载收藏的音乐
+          if (widget.playlist != null) {
+            final songsData = await apiService.getPlaylistTracks(
+              widget.playlist!.globalCollectionId,
+              page: _currentPage,
+              pageSize: _pageSize,
+            );
+
+            setState(() {
+              _songs =
+                  songsData.map((songData) => Song.fromJson(songData)).toList();
+              _hasMore = songsData.length >= _pageSize;
+              _filterAndSortSongs();
+            });
+          }
           break;
 
         case MusicListType.recent:

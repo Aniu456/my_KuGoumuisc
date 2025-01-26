@@ -177,12 +177,25 @@ class _LocalSongsPageState extends State<LocalSongsPage> {
                       onTap: () async {
                         // 播放歌曲
                         final playerService = context.read<PlayerService>();
-                        final playInfo = PlaySongInfo(
-                          hash: song.hash,
-                          title: song.title,
-                          artist: song.artist,
-                          cover: song.cover,
-                        );
+
+                        // 将所有缓存歌曲转换为播放列表
+                        final playlist = _cachedSongs
+                            .map((song) => PlaySongInfo(
+                                  hash: song.hash,
+                                  title: song.title,
+                                  artist: song.artist,
+                                  cover: song.cover,
+                                ))
+                            .toList();
+
+                        // 获取当前点击歌曲的索引
+                        final currentIndex = _cachedSongs.indexOf(song);
+
+                        // 设置播放列表
+                        playerService.preparePlaylist(playlist, currentIndex);
+
+                        // 播放当前选中的歌曲
+                        final playInfo = playlist[currentIndex];
                         await playerService.play(playInfo);
 
                         // 跳转到播放页面
