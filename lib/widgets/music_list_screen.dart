@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:my_music_app/utils/image_utils.dart';
 import '../models/playlist.dart';
 import '../models/song.dart';
+import '../models/play_song_info.dart';
 import '../services/api_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../services/player_service.dart';
@@ -276,12 +277,12 @@ class _MusicListScreenState extends State<MusicListScreen> {
         ),
       );
 
-      // 准备播放列表和当前歌曲
-      playerService.preparePlaylist(_songs, songIndex);
-      await playerService.setCurrentSong(song);
+      // 转换播放列表
+      final playlist = _songs.map((s) => PlaySongInfo.fromSong(s)).toList();
 
-      // 开始播放
-      await playerService.startPlayback();
+      // 准备播放列表和当前歌曲
+      playerService.preparePlaylist(playlist, songIndex);
+      await playerService.play(playlist[songIndex]);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -384,10 +385,6 @@ class _MusicListScreenState extends State<MusicListScreen> {
                         ),
                       ],
                     ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.more_vert),
-                      onPressed: () => _showSongMenu(song),
-                    ),
                     onTap: () => _playSong(song),
                   );
                 },
@@ -426,15 +423,15 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
 
   @override
   Widget buildResults(BuildContext context) {
-    return _buildSearchResults();
+    return _buildSearchResults(context);
   }
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    return _buildSearchResults();
+    return _buildSearchResults(context);
   }
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResults(BuildContext context) {
     if (query.isEmpty) {
       return const Center(
         child: Text('输入歌曲名称或歌手名称搜索'),
@@ -458,8 +455,36 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
         return ListTile(
           title: Text(song.title),
           subtitle: Text(song.artists),
-          onTap: () {
-            close(context, query);
+          onTap: () async {
+            try {
+              final playerService = context.read<PlayerService>();
+              final songInfo = PlaySongInfo(
+                hash: song.hash,
+                title: song.title,
+                artist: song.artists,
+                cover: song.cover,
+              );
+
+              // 关闭搜索页面
+              close(context, null);
+
+              // 导航到播放页面
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PlayerPage(),
+                ),
+              );
+
+              // 播放歌曲
+              await playerService.play(songInfo);
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('播放失败: $e')),
+                );
+              }
+            }
           },
         );
       },

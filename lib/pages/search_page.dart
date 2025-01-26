@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../services/api_service.dart';
 import '../services/player_service.dart';
+import '../models/play_song_info.dart';
+import '../pages/player_page.dart';
+import '../utils/image_utils.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -37,6 +40,9 @@ class _SearchPageState extends State<SearchPage> {
         results.add({
           'fileName': song.fileName,
           'fileHash': song.fileHash,
+          'image': song.image,
+          'songName': song.songName,
+          'singerName': song.singers.isNotEmpty ? song.singers[0].name : '',
         });
       }
 
@@ -82,9 +88,8 @@ class _SearchPageState extends State<SearchPage> {
               itemCount: _searchResults.length,
               itemBuilder: (context, index) {
                 final song = _searchResults[index];
-                final parts = (song['fileName'] ?? '').split(' - ');
-                final singer = parts.isNotEmpty ? parts[0] : '';
-                final songName = parts.length > 1 ? parts[1] : '';
+                final songName = song['songName'] ?? '';
+                final singer = song['singerName'] ?? '';
 
                 return ListTile(
                   title: Text(
@@ -102,8 +107,32 @@ class _SearchPageState extends State<SearchPage> {
                       color: Colors.grey[600],
                     ),
                   ),
-                  onTap: () {
-                    // TODO: 处理歌曲点击事件
+                  onTap: () async {
+                    try {
+                      final playerService = context.read<PlayerService>();
+                      final songInfo = PlaySongInfo(
+                          hash: song['fileHash'] ?? '',
+                          title: songName,
+                          artist: singer,
+                          cover: ImageUtils.getMediumUrl(song['image']));
+
+                      // 导航到播放页面
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PlayerPage(),
+                        ),
+                      );
+
+                      // 播放歌曲
+                      await playerService.play(songInfo);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('播放失败: $e')),
+                        );
+                      }
+                    }
                   },
                 );
               },

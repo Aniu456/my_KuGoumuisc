@@ -22,16 +22,6 @@ class PlayerControls extends StatelessWidget {
             children: [
               _buildControlButton(
                 context,
-                icon: Icons.shuffle,
-                size: Responsive.getDynamicSize(context, 24),
-                color: playerService.isShuffleMode
-                    ? Theme.of(context).primaryColor
-                    : null,
-                onPressed: () => playerService.toggleShuffleMode(),
-              ),
-              SizedBox(width: Responsive.getDynamicSize(context, 24)),
-              _buildControlButton(
-                context,
                 icon: Icons.skip_previous,
                 size: Responsive.getDynamicSize(context, 32),
                 onPressed: playerService.canPlayPrevious
@@ -49,19 +39,9 @@ class PlayerControls extends StatelessWidget {
                     ? () => playerService.playNext()
                     : null,
               ),
-              SizedBox(width: Responsive.getDynamicSize(context, 24)),
-              _buildControlButton(
-                context,
-                icon: Icons.repeat,
-                size: Responsive.getDynamicSize(context, 24),
-                color: playerService.isRepeatMode
-                    ? Theme.of(context).primaryColor
-                    : null,
-                onPressed: () => playerService.toggleRepeatMode(),
-              ),
             ],
           ),
-          if (playerService.currentSong != null) ...[
+          if (playerService.currentSongInfo != null) ...[
             SizedBox(height: Responsive.getDynamicSize(context, 16)),
             // 显示当前播放歌曲信息
             Padding(
@@ -69,14 +49,14 @@ class PlayerControls extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    playerService.currentSong?.title ?? '',
+                    playerService.currentSongInfo?.title ?? '',
                     style: Theme.of(context).textTheme.titleMedium,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    playerService.currentSong?.artists ?? '',
+                    playerService.currentSongInfo?.artist ?? '',
                     style: Theme.of(context).textTheme.bodySmall,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -176,11 +156,7 @@ class PlayerControls extends StatelessWidget {
             isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled),
         iconSize: buttonSize,
         color: Theme.of(context).primaryColor,
-        onPressed: () {
-          if (playerService.currentSong != null) {
-            playerService.togglePlay();
-          }
-        },
+        onPressed: () => playerService.togglePlay(),
         splashRadius: buttonSize * 0.8,
         tooltip: isPlaying ? '暂停' : '播放',
       ),

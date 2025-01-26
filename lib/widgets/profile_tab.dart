@@ -3,11 +3,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:my_music_app/utils/image_utils.dart';
 import '../bloc/auth/auth_bloc.dart';
 import '../services/api_service.dart';
+import '../services/audio_cache_manager.dart';
 import '../models/playlist.dart';
 import 'music_list_screen.dart';
 import 'recent_songs_section.dart';
 import '../pages/recent_songs_page.dart';
 import '../pages/search_page.dart';
+import '../pages/local_songs_page.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -23,9 +25,16 @@ class _ProfileTabState extends State<ProfileTab>
   Playlist _likedPlaylist = Playlist.empty();
   bool _isFirstLoad = true;
   bool _isPurchasedExpanded = false;
+  int _localSongCount = 0;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalSongCount();
+  }
 
   @override
   void didChangeDependencies() {
@@ -35,6 +44,20 @@ class _ProfileTabState extends State<ProfileTab>
     if (_isFirstLoad && state is AuthAuthenticated) {
       _isFirstLoad = false;
       _loadFromCache();
+    }
+  }
+
+  Future<void> _loadLocalSongCount() async {
+    try {
+      final cacheManager = await AudioCacheManager.getInstance();
+      final count = await cacheManager.getCachedCount();
+      if (mounted) {
+        setState(() {
+          _localSongCount = count;
+        });
+      }
+    } catch (e) {
+      print('加载本地歌曲数量失败: $e');
     }
   }
 
@@ -52,6 +75,7 @@ class _ProfileTabState extends State<ProfileTab>
   // 从服务器刷新数据
   Future<void> _refreshFromServer() async {
     try {
+      await _loadLocalSongCount(); // 刷新本地歌曲数量
       final apiService = context.read<ApiService>();
       final response = await apiService.getUserPlaylists(forceRefresh: true);
       _updatePlaylistsData(response);
@@ -364,6 +388,27 @@ class _ProfileTabState extends State<ProfileTab>
                             label: '我喜欢',
                             count: _likedPlaylist.count.toString(),
                             color: Colors.red[400]!,
+                            onTap: () {
+                              final state = context.read<AuthBloc>().state;
+                              if (state is! AuthAuthenticated) {
+                                _handleLoginTap();
+                                return;
+                              }
+                              // 如果有"我喜欢"歌单，导航到歌单页面
+                              if (_likedPlaylist
+                                  .globalCollectionId.isNotEmpty) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => MusicListScreen(
+                                      type: MusicListType.favorite,
+                                      title: '我喜欢',
+                                      playlist: _likedPlaylist,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                           ),
                           Container(
                             width: 0.5,
@@ -375,6 +420,19 @@ class _ProfileTabState extends State<ProfileTab>
                             label: '最近',
                             count: isAuthenticated ? '30' : '0',
                             color: Colors.blue[400]!,
+                            onTap: () {
+                              final state = context.read<AuthBloc>().state;
+                              if (state is! AuthAuthenticated) {
+                                _handleLoginTap();
+                                return;
+                              }
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const RecentSongsPage(),
+                                ),
+                              );
+                            },
                           ),
                           Container(
                             width: 0.5,
@@ -384,8 +442,16 @@ class _ProfileTabState extends State<ProfileTab>
                           _buildFeatureItem(
                             icon: Icons.download_outlined,
                             label: '本地',
-                            count: '0',
+                            count: _localSongCount.toString(),
                             color: Colors.green[400]!,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const LocalSongsPage(),
+                                ),
+                              ).then((_) => _loadLocalSongCount());
+                            },
                           ),
                         ],
                       ),
@@ -728,59 +794,10 @@ class _ProfileTabState extends State<ProfileTab>
     required String label,
     required String count,
     required Color color,
+    VoidCallback? onTap,
   }) {
     return GestureDetector(
-      onTap: () {
-        final state = context.read<AuthBloc>().state;
-        if (state is! AuthAuthenticated) {
-          _handleLoginTap();
-          return;
-        }
-
-        // 处理点击事件
-        if (label == '我喜欢') {
-          // 如果有"我喜欢"歌单，导航到歌单页面
-          if (_likedPlaylist.globalCollectionId.isNotEmpty) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => MusicListScreen(
-                  type: MusicListType.favorite,
-                  title: '我喜欢',
-                  playlist: _likedPlaylist,
-                ),
-              ),
-            );
-          }
-        } else {
-          MusicListType type;
-          switch (label) {
-            case '最近':
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const RecentSongsPage(),
-                ),
-              );
-              return;
-            case '本地':
-              type = MusicListType.local;
-              break;
-            default:
-              return;
-          }
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MusicListScreen(
-                type: type,
-                title: label,
-              ),
-            ),
-          );
-        }
-      },
+      onTap: onTap,
       child: Row(
         children: [
           Container(

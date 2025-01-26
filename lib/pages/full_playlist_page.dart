@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/player_service.dart';
 import '../models/song.dart';
+import '../models/play_song_info.dart';
 
 class FullPlaylistPage extends StatefulWidget {
   const FullPlaylistPage({super.key});
@@ -11,7 +12,7 @@ class FullPlaylistPage extends StatefulWidget {
 }
 
 class _FullPlaylistPageState extends State<FullPlaylistPage> {
-  List<Song> _filteredSongs = [];
+  List<PlaySongInfo> _filteredSongs = [];
   String _searchQuery = '';
 
   void _filterSongs(PlayerService playerService) {
@@ -19,8 +20,8 @@ class _FullPlaylistPageState extends State<FullPlaylistPage> {
       _filteredSongs = List.from(playerService.playlist);
     } else {
       _filteredSongs = playerService.playlist.where((song) {
-        final name = song.name.toLowerCase();
-        final singer = song.singerName.toLowerCase();
+        final name = song.title.toLowerCase();
+        final singer = song.artist.toLowerCase();
         final query = _searchQuery.toLowerCase();
         return name.contains(query) || singer.contains(query);
       }).toList();
@@ -93,15 +94,14 @@ class _FullPlaylistPageState extends State<FullPlaylistPage> {
                     itemBuilder: (context, index) {
                       final song = _filteredSongs[index];
                       final isPlaying =
-                          song.hash == playerService.currentSong?.hash;
+                          song.hash == playerService.currentSongInfo?.hash;
 
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: () async {
                             try {
-                              await playerService.setCurrentSong(song);
-                              await playerService.startPlayback();
+                              await playerService.play(song);
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -147,7 +147,7 @@ class _FullPlaylistPageState extends State<FullPlaylistPage> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          song.name,
+                                          song.title,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -162,7 +162,7 @@ class _FullPlaylistPageState extends State<FullPlaylistPage> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          song.singerName,
+                                          song.artist,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -248,8 +248,8 @@ class _PlaylistSearchDelegate extends SearchDelegate<String?> {
     }
 
     final results = _playerService.playlist.where((song) {
-      final name = song.name.toLowerCase();
-      final singer = song.singerName.toLowerCase();
+      final name = song.title.toLowerCase();
+      final singer = song.artist.toLowerCase();
       final searchQuery = query.toLowerCase();
       return name.contains(searchQuery) || singer.contains(searchQuery);
     }).toList();
@@ -265,8 +265,8 @@ class _PlaylistSearchDelegate extends SearchDelegate<String?> {
       itemBuilder: (context, index) {
         final song = results[index];
         return ListTile(
-          title: Text(song.name),
-          subtitle: Text(song.singerName),
+          title: Text(song.title),
+          subtitle: Text(song.artist),
           onTap: () {
             close(context, query);
           },

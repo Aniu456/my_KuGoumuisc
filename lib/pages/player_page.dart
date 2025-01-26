@@ -33,7 +33,7 @@ class _PlayerPageState extends State<PlayerPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final playerService = context.watch<PlayerService>();
-    final newHash = playerService.currentSong?.hash;
+    final newHash = playerService.currentSongInfo?.hash;
 
     if (newHash != null && newHash != _currentSongHash) {
       _currentSongHash = newHash;
@@ -51,7 +51,7 @@ class _PlayerPageState extends State<PlayerPage> {
     final playerService = context.read<PlayerService>();
     final apiService = context.read<ApiService>();
 
-    if (playerService.currentSong?.hash != null) {
+    if (playerService.currentSongInfo?.hash != null) {
       try {
         setState(() {
           _lyrics = null;
@@ -59,7 +59,7 @@ class _PlayerPageState extends State<PlayerPage> {
         });
 
         final lyrics =
-            await apiService.getFullLyric(playerService.currentSong!.hash);
+            await apiService.getFullLyric(playerService.currentSongInfo!.hash);
 
         if (!mounted) return;
 
@@ -223,7 +223,7 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget build(BuildContext context) {
     final playerService = context.watch<PlayerService>();
     _updateCurrentLyric(playerService.position);
-    final currentSong = playerService.currentSong;
+    final currentSongInfo = playerService.currentSongInfo;
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -236,27 +236,27 @@ class _PlayerPageState extends State<PlayerPage> {
           });
         },
         children: [
-          _buildPlayerPage(
-              context, playerService, currentSong, screenWidth, screenHeight),
-          _buildLyricsPage(context, currentSong),
+          _buildPlayerPage(context, playerService, currentSongInfo, screenWidth,
+              screenHeight),
+          _buildLyricsPage(context, currentSongInfo),
         ],
       ),
     );
   }
 
   Widget _buildPlayerPage(BuildContext context, PlayerService playerService,
-      currentSong, screenWidth, screenHeight) {
+      currentSongInfo, screenWidth, screenHeight) {
     return Stack(
       children: [
         // 背景图片层
-        if (currentSong?.cover != null) ...[
+        if (currentSongInfo?.cover != null) ...[
           Positioned.fill(
             child: ClipRect(
               child: Stack(
                 children: [
                   Positioned.fill(
                     child: ImageUtils.createCachedImage(
-                      ImageUtils.getLargeUrl(currentSong!.cover),
+                      ImageUtils.getLargeUrl(currentSongInfo!.cover),
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -339,9 +339,9 @@ class _PlayerPageState extends State<PlayerPage> {
                   children: [
                     SizedBox(
                       height: 32,
-                      child: currentSong != null
+                      child: currentSongInfo != null
                           ? _buildScrollingText(
-                              currentSong.title,
+                              currentSongInfo.title,
                               const TextStyle(
                                 color: Colors.white,
                                 fontSize: 26,
@@ -354,9 +354,9 @@ class _PlayerPageState extends State<PlayerPage> {
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 24,
-                      child: currentSong != null
+                      child: currentSongInfo != null
                           ? _buildScrollingText(
-                              currentSong.artists,
+                              currentSongInfo.artist,
                               TextStyle(
                                 color: Colors.white.withOpacity(0.8),
                                 fontSize: 18,
@@ -403,7 +403,7 @@ class _PlayerPageState extends State<PlayerPage> {
                                   BorderRadius.circular(screenWidth * 0.06),
                               child: ImageUtils.createCachedImage(
                                 ImageUtils.getLargeUrl(
-                                    currentSong?.cover ?? ''),
+                                    currentSongInfo?.cover ?? ''),
                                 width: screenWidth * 0.7,
                                 height: screenWidth * 0.7,
                                 fit: BoxFit.cover,
@@ -546,11 +546,7 @@ class _PlayerPageState extends State<PlayerPage> {
                         ),
                         _buildPlayPauseButton(
                           playerService.isPlaying,
-                          () async {
-                            if (playerService.currentSong != null) {
-                              await playerService.togglePlay();
-                            }
-                          },
+                          () => playerService.togglePlay(),
                         ),
                         _buildSkipButton(
                           Icons.skip_next,
@@ -571,21 +567,21 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-  Widget _buildLyricsPage(BuildContext context, currentSong) {
+  Widget _buildLyricsPage(BuildContext context, currentSongInfo) {
     final playerService = context.watch<PlayerService>();
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Stack(
       children: [
         // 背景
-        if (currentSong?.cover != null) ...[
+        if (currentSongInfo?.cover != null) ...[
           Positioned.fill(
             child: ClipRect(
               child: Stack(
                 children: [
                   Positioned.fill(
                     child: ImageUtils.createCachedImage(
-                      ImageUtils.getLargeUrl(currentSong!.cover),
+                      ImageUtils.getLargeUrl(currentSongInfo!.cover),
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -778,11 +774,7 @@ class _PlayerPageState extends State<PlayerPage> {
                         ),
                         _buildPlayPauseButton(
                           playerService.isPlaying,
-                          () async {
-                            if (playerService.currentSong != null) {
-                              await playerService.togglePlay();
-                            }
-                          },
+                          () => playerService.togglePlay(),
                           isLyricPage: true,
                         ),
                         _buildSkipButton(
@@ -957,13 +949,7 @@ class _PlayerPageState extends State<PlayerPage> {
         ),
         IconButton(
           icon: Icon(playerService.isPlaying ? Icons.pause : Icons.play_arrow),
-          onPressed: () {
-            if (playerService.isPlaying) {
-              playerService.pause();
-            } else {
-              playerService.resume();
-            }
-          },
+          onPressed: () => playerService.togglePlay(),
         ),
         IconButton(
           icon: const Icon(Icons.skip_next),
@@ -1041,15 +1027,14 @@ class _PlayerPageState extends State<PlayerPage> {
                     itemBuilder: (context, index) {
                       final song = playerService.playlist[index];
                       final isPlaying =
-                          song.hash == playerService.currentSong?.hash;
+                          song.hash == playerService.currentSongInfo?.hash;
 
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: () async {
                             try {
-                              await playerService.setCurrentSong(song);
-                              await playerService.startPlayback();
+                              await playerService.play(song);
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1095,7 +1080,7 @@ class _PlayerPageState extends State<PlayerPage> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          song.name,
+                                          song.title,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -1110,7 +1095,7 @@ class _PlayerPageState extends State<PlayerPage> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          song.singerName,
+                                          song.artist,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/recent_song.dart';
+import '../models/play_song_info.dart';
 import '../services/api_service.dart';
 import '../services/player_service.dart';
 import '../utils/image_utils.dart';
-import '../models/song.dart';
 import '../pages/player_page.dart';
 import '../pages/recent_songs_page.dart';
 
@@ -54,14 +54,10 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
 
       // 将最近播放列表转换为播放列表
       final playlist = _songs
-          .map((recent) => Song(
+          .map((recent) => PlaySongInfo(
                 hash: recent.hash,
-                name: recent.songname,
-                albumId: '',
-                audioId: '',
-                size: 0,
-                singerName: recent.singername,
-                albumImage: recent.cover,
+                title: recent.songname,
+                artist: recent.singername,
                 cover: recent.cover,
               ))
           .toList();
@@ -79,10 +75,9 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
         ),
       );
 
-      // 准备播放列表（使用完整的最近播放列表）
+      // 准备播放列表并开始播放
       playerService.preparePlaylist(playlist, currentIndex);
-      await playerService.setCurrentSong(playlist[currentIndex]);
-      await playerService.startPlayback();
+      await playerService.play(playlist[currentIndex]);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

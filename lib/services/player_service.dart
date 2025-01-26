@@ -1,7 +1,10 @@
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../models/song.dart';
+import '../models/play_song_info.dart';
 import 'api_service.dart';
+import 'audio_cache_manager.dart';
 
 enum PlayMode {
   loop, // 循环播放
@@ -12,187 +15,76 @@ enum PlayMode {
 class PlayerService extends ChangeNotifier {
   final ApiService _apiService;
   final AudioPlayer _audioPlayer;
+  late final AudioCacheManager _cacheManager;
+  bool _isInitialized = false;
 
-  Song? _currentSong;
-  List<Song> _playlist = [];
-  List<Song> get playlist => _playlist;
+  // 播放状态
+  PlaySongInfo? _currentSongInfo;
+  List<PlaySongInfo> _playlist = [];
   int _currentIndex = -1;
   bool _isPlaying = false;
-  Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
-  String? _lyric;
-  bool _isLoadingLyric = false;
-
-  // 播放模式
-  bool _isShuffleMode = false;
-  bool _isRepeatMode = false;
-  List<int> _shuffleIndices = [];
-
+  Duration _duration = Duration.zero;
+  String? _lyrics;
   PlayMode _playMode = PlayMode.sequence;
-  PlayMode get playMode => _playMode;
 
-  PlayerService(this._apiService) : _audioPlayer = AudioPlayer() {
-    _setupAudioPlayer();
-  }
-
-  Song? get currentSong => _currentSong;
+  // Getters
+  PlaySongInfo? get currentSongInfo => _currentSongInfo;
   bool get isPlaying => _isPlaying;
-  Duration get duration => _duration;
   Duration get position => _position;
-  String? get lyric => _lyric;
-  bool get isLoadingLyric => _isLoadingLyric;
+  Duration get duration => _duration;
+  String? get lyrics => _lyrics;
+  PlayMode get playMode => _playMode;
+  List<PlaySongInfo> get playlist => _playlist;
   bool get canPlayNext =>
       _playlist.isNotEmpty && _currentIndex < _playlist.length - 1;
   bool get canPlayPrevious => _playlist.isNotEmpty && _currentIndex > 0;
-  bool get isShuffleMode => _isShuffleMode;
-  bool get isRepeatMode => _isRepeatMode;
 
-  void _setupAudioPlayer() {
-    _audioPlayer.playerStateStream.listen((state) {
-      print('播放器状态变化: ${state.processingState} - playing: ${state.playing}');
-      _isPlaying = state.playing;
-      notifyListeners();
-    });
-
-    _audioPlayer.positionStream.listen((pos) {
-      _position = pos;
-      notifyListeners();
-    });
-
-    _audioPlayer.durationStream.listen((dur) {
-      print('音频时长更新: ${dur?.inSeconds ?? 0} 秒');
-      _duration = dur ?? Duration.zero;
-      notifyListeners();
-    });
-
-    // 监听播放完成事件
-    _audioPlayer.processingStateStream.listen((state) {
-      print('处理状态变化: $state');
-      if (state == ProcessingState.completed) {
-        if (_playMode == PlayMode.single) {
-          // 单曲循环
-          _audioPlayer.seek(Duration.zero);
-          _audioPlayer.play();
-        } else {
-          playNext(); // 播放下一首
-        }
-      }
-    });
-
-    _audioPlayer.playbackEventStream.listen(
-      (event) {
-        print('播放事件: $event');
-        print('缓冲位置: ${event.bufferedPosition}');
-        print('音频时长: ${event.duration}');
-      },
-      onError: (Object e, StackTrace stackTrace) {
-        print('播放错误: $e');
-        print('错误类型: ${e.runtimeType}');
-        print('错误堆栈: $stackTrace');
-        _isPlaying = false;
-        notifyListeners();
-      },
-    );
+  PlayerService(this._apiService) : _audioPlayer = AudioPlayer() {
+    _setupAudioPlayer();
+    _initCacheManager();
   }
 
-  // 更新播放列表并开始播放
-  Future<void> updatePlaylistAndPlay(List<Song> songs, int initialIndex) async {
-    _playlist = List.from(songs);
-    if (_isShuffleMode) {
-      _generateShuffleIndices();
+  Future<void> _initCacheManager() async {
+    if (!_isInitialized) {
+      _cacheManager = await AudioCacheManager.getInstance();
+      _isInitialized = true;
     }
-    await play(_playlist[initialIndex]);
   }
 
-  // 生成随机播放顺序
-  void _generateShuffleIndices() {
-    _shuffleIndices = List.generate(_playlist.length, (index) => index);
-    _shuffleIndices.shuffle();
-  }
-
-  // 获取下一首歌的索引
-  int _getNextIndex() {
-    if (_playlist.isEmpty) return -1;
-
-    if (_isShuffleMode) {
-      final currentShuffleIndex = _shuffleIndices.indexOf(_currentIndex);
-      if (currentShuffleIndex < _shuffleIndices.length - 1) {
-        return _shuffleIndices[currentShuffleIndex + 1];
-      } else if (_isRepeatMode) {
-        _generateShuffleIndices(); // 重新生成随机顺序
-        return _shuffleIndices[0];
-      }
-    } else {
-      if (_currentIndex < _playlist.length - 1) {
-        return _currentIndex + 1;
-      } else if (_isRepeatMode) {
-        return 0;
-      }
-    }
-    return -1;
-  }
-
-  // 获取上一首歌的索引
-  int _getPreviousIndex() {
-    if (_playlist.isEmpty) return -1;
-
-    if (_isShuffleMode) {
-      final currentShuffleIndex = _shuffleIndices.indexOf(_currentIndex);
-      if (currentShuffleIndex > 0) {
-        return _shuffleIndices[currentShuffleIndex - 1];
-      } else if (_isRepeatMode) {
-        return _shuffleIndices.last;
-      }
-    } else {
-      if (_currentIndex > 0) {
-        return _currentIndex - 1;
-      } else if (_isRepeatMode) {
-        return _playlist.length - 1;
-      }
-    }
-    return -1;
-  }
-
-  Future<void> play(Song song) async {
+  // 核心播放函数
+  Future<void> play(PlaySongInfo songInfo) async {
     try {
-      print('开始播放歌曲: ${song.name}');
-      _currentIndex = _playlist.indexOf(song);
-      String? url;
-      try {
-        url = await _apiService.getSongUrl(song.hash, song.albumId);
-        print('获取到的播放URL: $url');
-      } catch (e) {
-        print('获取歌曲URL失败: $e');
-        // 如果是权限相关的错误，直接抛出
-        if (e.toString().contains('需要购买') || e.toString().contains('VIP会员')) {
-          rethrow;
-        }
-        throw Exception('获取歌曲播放地址失败，请稍后重试');
+      await _initCacheManager();
+
+      // 1. 检查本地缓存
+      final cachedPath = await _cacheManager.getCachedPath(songInfo.hash);
+
+      if (cachedPath != null) {
+        // 2a. 有缓存，直接播放本地文件
+        await _audioPlayer.setFilePath(cachedPath);
+        // 更新播放信息
+        await _cacheManager.updatePlayInfo(songInfo.hash);
+      } else {
+        // 2b. 无缓存，播放网络流并缓存
+        final url =
+            await _apiService.getSongUrl(songInfo.hash, songInfo.albumId ?? '');
+        await _audioPlayer.setUrl(url, headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'http://8.148.7.143:3000',
+        });
+        // 后台缓存
+        unawaited(_cacheManager.cacheAudio(songInfo));
       }
 
-      if (_currentSong?.hash != song.hash) {
-        await _audioPlayer.stop();
-        print('设置音频源: $url');
+      // 3. 更新当前播放信息
+      _currentSongInfo = songInfo;
 
-        try {
-          await _audioPlayer.setUrl(
-            url,
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Referer': 'http://8.148.7.143:3000',
-            },
-          );
-          _currentSong = song;
-          _lyric = null;
-          _loadLyric(song.hash);
-        } catch (e) {
-          print('设置音频源失败: $e');
-          throw Exception('播放器初始化失败，请稍后重试');
-        }
-      }
+      // 4. 异步加载歌词
+      _loadLyrics(songInfo.hash);
 
-      print('开始播放');
+      // 5. 开始播放
       await _audioPlayer.play();
       notifyListeners();
     } catch (e) {
@@ -201,62 +93,21 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  Future<void> playNext() async {
-    final nextSong = getNextSong();
-    if (nextSong != null) {
-      final nextIndex = _playlist.indexOf(nextSong);
-      _currentIndex = nextIndex;
-      await setCurrentSong(nextSong);
-      await startPlayback();
-    }
-  }
-
-  Future<void> playPrevious() async {
-    final previousSong = getPreviousSong();
-    if (previousSong != null) {
-      final previousIndex = _playlist.indexOf(previousSong);
-      _currentIndex = previousIndex;
-      await setCurrentSong(previousSong);
-      await startPlayback();
-    }
-  }
-
-  // 切换随机播放模式
-  void toggleShuffleMode() {
-    _isShuffleMode = !_isShuffleMode;
-    if (_isShuffleMode) {
-      _generateShuffleIndices();
-    }
-    notifyListeners();
-  }
-
-  // 切换循环播放模式
-  void toggleRepeatMode() {
-    _isRepeatMode = !_isRepeatMode;
-    notifyListeners();
-  }
-
-  Future<void> _loadLyric(String hash) async {
-    if (_isLoadingLyric) return;
-
+  // 异步加载歌词
+  Future<void> _loadLyrics(String hash) async {
     try {
-      _isLoadingLyric = true;
+      final lyrics = await _apiService.getFullLyric(hash);
+      _lyrics = lyrics;
       notifyListeners();
-
-      final lyric = await _apiService.getFullLyric(hash);
-      _lyric = lyric;
     } catch (e) {
       print('加载歌词失败: $e');
-      _lyric = null;
-    } finally {
-      _isLoadingLyric = false;
-      notifyListeners();
+      _lyrics = null;
     }
   }
 
+  // 播放控制函数
   Future<void> togglePlay() async {
-    if (_currentSong == null) return;
-
+    if (_currentSongInfo == null) return;
     if (_isPlaying) {
       await _audioPlayer.pause();
     } else {
@@ -270,9 +121,30 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> stop() async {
     await _audioPlayer.stop();
-    _currentSong = null;
-    _lyric = null;
+    _currentSongInfo = null;
+    _lyrics = null;
     notifyListeners();
+  }
+
+  // 播放列表相关函数
+  void preparePlaylist(List<PlaySongInfo> songs, int initialIndex) {
+    _playlist = List.from(songs);
+    _currentIndex = initialIndex;
+    notifyListeners();
+  }
+
+  Future<void> playNext() async {
+    if (!canPlayNext) return;
+    final nextIndex = _currentIndex + 1;
+    await play(_playlist[nextIndex]);
+    _currentIndex = nextIndex;
+  }
+
+  Future<void> playPrevious() async {
+    if (!canPlayPrevious) return;
+    final prevIndex = _currentIndex - 1;
+    await play(_playlist[prevIndex]);
+    _currentIndex = prevIndex;
   }
 
   void togglePlayMode() {
@@ -290,118 +162,54 @@ class PlayerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 准备播放列表
-  void preparePlaylist(List<Song> songs, int initialIndex) {
-    _playlist = List.from(songs);
-    _currentIndex = initialIndex;
-    if (_isShuffleMode) {
-      _generateShuffleIndices();
-    }
-    notifyListeners();
-  }
+  // 播放器事件监听设置
+  void _setupAudioPlayer() {
+    _audioPlayer.playerStateStream.listen((state) {
+      _isPlaying = state.playing;
+      notifyListeners();
+    });
 
-  // 设置当前歌曲
-  Future<void> setCurrentSong(Song song) async {
-    try {
-      _currentIndex = _playlist.indexOf(song);
-      final url = await _apiService.getSongUrl(song.hash, song.albumId);
+    _audioPlayer.positionStream.listen((pos) {
+      _position = pos;
+      notifyListeners();
+    });
 
-      if (_currentSong?.hash != song.hash) {
-        await _audioPlayer.stop();
-        try {
-          await _audioPlayer.setUrl(
-            url,
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Referer': 'http://8.148.7.143:3000',
-            },
-          );
-          _currentSong = song;
-          _lyric = null;
-          _loadLyric(song.hash);
-        } catch (e) {
-          print('设置音频源失败: $e');
-          throw Exception('无法播放该歌曲，可能是版权限制');
-        }
+    _audioPlayer.durationStream.listen((dur) {
+      _duration = dur ?? Duration.zero;
+      notifyListeners();
+    });
+
+    _audioPlayer.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed) {
+        _onSongComplete();
       }
-      notifyListeners();
-    } catch (e) {
-      print('设置当前歌曲失败: $e');
-      rethrow;
-    }
+    });
   }
 
-  // 开始播放
-  Future<void> startPlayback() async {
-    if (_currentSong == null) return;
-    try {
-      await _audioPlayer.play();
-      notifyListeners();
-    } catch (e) {
-      print('开始播放失败: $e');
-      rethrow;
-    }
-  }
-
-  Song? getNextSong() {
-    if (_playlist.isEmpty) return null;
-
+  void _onSongComplete() {
     switch (_playMode) {
-      case PlayMode.single:
-        return _currentSong; // 单曲循环，返回当前歌曲
       case PlayMode.sequence:
-        // 顺序播放，到最后一首就停止
-        if (_currentIndex < _playlist.length - 1) {
-          return _playlist[_currentIndex + 1];
+        if (canPlayNext) {
+          playNext();
         }
-        return null;
+        break;
       case PlayMode.loop:
-        // 列表循环，到最后一首返回第一首
-        final nextIndex = (_currentIndex + 1) % _playlist.length;
-        return _playlist[nextIndex];
-    }
-  }
-
-  Song? getPreviousSong() {
-    if (_playlist.isEmpty) return null;
-
-    switch (_playMode) {
+        if (canPlayNext) {
+          playNext();
+        } else {
+          _currentIndex = -1;
+          if (_playlist.isNotEmpty) {
+            play(_playlist[0]);
+            _currentIndex = 0;
+          }
+        }
+        break;
       case PlayMode.single:
-        return _currentSong; // 单曲循环，返回当前歌曲
-      case PlayMode.sequence:
-      case PlayMode.loop:
-        // 到第一首就返回第一首
-        if (_currentIndex > 0) {
-          return _playlist[_currentIndex - 1];
-        } else if (_playMode == PlayMode.loop) {
-          return _playlist.last; // 循环模式下，从第一首切到最后一首
+        if (_currentSongInfo != null) {
+          play(_currentSongInfo!);
         }
-        return null;
+        break;
     }
-  }
-
-  /// 自动播放下一首（当前歌曲播放完成时调用）
-  Future<void> _onSongComplete() async {
-    final nextSong = getNextSong();
-    if (nextSong != null) {
-      await playNext();
-    } else {
-      // 如果没有下一首，停止播放
-      await _audioPlayer.stop();
-    }
-  }
-
-  /// 暂停播放
-  Future<void> pause() async {
-    await _audioPlayer.pause();
-    notifyListeners();
-  }
-
-  /// 恢复播放
-  Future<void> resume() async {
-    await _audioPlayer.play();
-    notifyListeners();
   }
 
   @override
