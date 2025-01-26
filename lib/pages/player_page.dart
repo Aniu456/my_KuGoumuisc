@@ -922,6 +922,73 @@ class _PlayerPageState extends State<PlayerPage> {
       ),
     );
   }
+
+  Widget _buildControlButtons(PlayerService playerService) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        IconButton(
+          icon: _buildPlayModeIcon(playerService.playMode),
+          onPressed: () {
+            playerService.togglePlayMode();
+            String modeText = '';
+            switch (playerService.playMode) {
+              case PlayMode.sequence:
+                modeText = '顺序播放';
+                break;
+              case PlayMode.loop:
+                modeText = '列表循环';
+                break;
+              case PlayMode.single:
+                modeText = '单曲循环';
+                break;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(modeText),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.skip_previous),
+          onPressed: () => playerService.playPrevious(),
+        ),
+        IconButton(
+          icon: Icon(playerService.isPlaying ? Icons.pause : Icons.play_arrow),
+          onPressed: () {
+            if (playerService.isPlaying) {
+              playerService.pause();
+            } else {
+              playerService.resume();
+            }
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.skip_next),
+          onPressed: () => playerService.playNext(),
+        ),
+        IconButton(
+          icon: const Icon(Icons.playlist_play),
+          onPressed: () {
+            // TODO: 显示播放列表
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlayModeIcon(PlayMode mode) {
+    switch (mode) {
+      case PlayMode.sequence:
+        return const Icon(Icons.repeat_one_outlined);
+      case PlayMode.loop:
+        return const Icon(Icons.repeat);
+      case PlayMode.single:
+        return const Icon(Icons.repeat_one);
+    }
+  }
 }
 
 class LyricLine {

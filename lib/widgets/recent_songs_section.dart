@@ -52,17 +52,23 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
     try {
       final playerService = context.read<PlayerService>();
 
-      // 创建 Song 对象
-      final song = Song(
-        hash: recentSong.hash,
-        name: recentSong.songname,
-        albumId: '',
-        audioId: '',
-        size: 0,
-        singerName: recentSong.singername,
-        albumImage: recentSong.cover,
-        cover: recentSong.cover,
-      );
+      // 将最近播放列表转换为播放列表
+      final playlist = _songs
+          .map((recent) => Song(
+                hash: recent.hash,
+                name: recent.songname,
+                albumId: '',
+                audioId: '',
+                size: 0,
+                singerName: recent.singername,
+                albumImage: recent.cover,
+                cover: recent.cover,
+              ))
+          .toList();
+
+      // 找到当前歌曲在列表中的索引
+      final currentIndex =
+          _songs.indexWhere((song) => song.hash == recentSong.hash);
 
       // 先导航到播放页面
       if (!mounted) return;
@@ -73,9 +79,9 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
         ),
       );
 
-      // 准备播放列表（这里只播放单曲）
-      playerService.preparePlaylist([song], 0);
-      await playerService.setCurrentSong(song);
+      // 准备播放列表（使用完整的最近播放列表）
+      playerService.preparePlaylist(playlist, currentIndex);
+      await playerService.setCurrentSong(playlist[currentIndex]);
       await playerService.startPlayback();
     } catch (e) {
       if (mounted) {

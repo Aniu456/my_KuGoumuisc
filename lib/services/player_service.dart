@@ -2,6 +2,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/song.dart';
 import 'api_service.dart';
+import 'player_streams.dart';
 
 enum PlayMode {
   loop, // 循环播放
@@ -9,7 +10,7 @@ enum PlayMode {
   sequence // 顺序播放
 }
 
-class PlayerService extends ChangeNotifier {
+class PlayerService extends ChangeNotifier with PlayerStreams {
   final ApiService _apiService;
   final AudioPlayer _audioPlayer;
 
@@ -27,8 +28,11 @@ class PlayerService extends ChangeNotifier {
   bool _isRepeatMode = false;
   List<int> _shuffleIndices = [];
 
-  PlayMode _playMode = PlayMode.loop;
+  PlayMode _playMode = PlayMode.sequence;
   PlayMode get playMode => _playMode;
+
+  @override
+  AudioPlayer get audioPlayer => _audioPlayer;
 
   PlayerService(this._apiService) : _audioPlayer = AudioPlayer() {
     _setupAudioPlayer();
@@ -48,6 +52,7 @@ class PlayerService extends ChangeNotifier {
 
   void _setupAudioPlayer() {
     _audioPlayer.playerStateStream.listen((state) {
+      print('播放器状态变化: ${state.processingState} - playing: ${state.playing}');
       _isPlaying = state.playing;
       notifyListeners();
     });
@@ -58,12 +63,14 @@ class PlayerService extends ChangeNotifier {
     });
 
     _audioPlayer.durationStream.listen((dur) {
+      print('音频时长更新: ${dur?.inSeconds ?? 0} 秒');
       _duration = dur ?? Duration.zero;
       notifyListeners();
     });
 
     // 监听播放完成事件
     _audioPlayer.processingStateStream.listen((state) {
+      print('处理状态变化: $state');
       if (state == ProcessingState.completed) {
         if (_playMode == PlayMode.single) {
           // 单曲循环
@@ -77,10 +84,13 @@ class PlayerService extends ChangeNotifier {
 
     _audioPlayer.playbackEventStream.listen(
       (event) {
-        // 正常事件处理
+        print('播放事件: $event');
+        print('缓冲位置: ${event.bufferedPosition}');
+        print('音频时长: ${event.duration}');
       },
       onError: (Object e, StackTrace stackTrace) {
         print('播放错误: $e');
+        print('错误类型: ${e.runtimeType}');
         print('错误堆栈: $stackTrace');
         _isPlaying = false;
         notifyListeners();
@@ -149,10 +159,19 @@ class PlayerService extends ChangeNotifier {
   Future<void> play(Song song) async {
     try {
       print('开始播放歌曲: ${song.name}');
-
       _currentIndex = _playlist.indexOf(song);
-      final url = await _apiService.getSongUrl(song.hash, song.albumId);
-      print('获取到的播放URL: $url');
+      String? url;
+      try {
+        url = await _apiService.getSongUrl(song.hash, song.albumId);
+        print('获取到的播放URL: $url');
+      } catch (e) {
+        print('获取歌曲URL失败: $e');
+        // 如果是权限相关的错误，直接抛出
+        if (e.toString().contains('需要购买') || e.toString().contains('VIP会员')) {
+          rethrow;
+        }
+        throw Exception('获取歌曲播放地址失败，请稍后重试');
+      }
 
       if (_currentSong?.hash != song.hash) {
         await _audioPlayer.stop();
@@ -172,7 +191,7 @@ class PlayerService extends ChangeNotifier {
           _loadLyric(song.hash);
         } catch (e) {
           print('设置音频源失败: $e');
-          throw Exception('无法播放该歌曲，可能是版权限制');
+          throw Exception('播放器初始化失败，请稍后重试');
         }
       }
 
@@ -186,52 +205,23 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> playNext() async {
-    if (_currentSong == null || _playlist.isEmpty) return;
-
-    switch (_playMode) {
-      case PlayMode.loop:
-        _currentIndex = (_currentIndex + 1) % _playlist.length;
-        break;
-      case PlayMode.single:
-        // 单曲循环模式下不切换歌曲
-        return;
-      case PlayMode.sequence:
-        if (_currentIndex < _playlist.length - 1) {
-          _currentIndex++;
-        } else {
-          // 顺序播放模式下，播放到最后一首停止
-          return;
-        }
-        break;
+    final nextSong = getNextSong();
+    if (nextSong != null) {
+      final nextIndex = _playlist.indexOf(nextSong);
+      _currentIndex = nextIndex;
+      await setCurrentSong(nextSong);
+      await startPlayback();
     }
-
-    await setCurrentSong(_playlist[_currentIndex]);
-    await startPlayback();
   }
 
   Future<void> playPrevious() async {
-    if (_currentSong == null || _playlist.isEmpty) return;
-
-    switch (_playMode) {
-      case PlayMode.loop:
-        _currentIndex =
-            (_currentIndex - 1 + _playlist.length) % _playlist.length;
-        break;
-      case PlayMode.single:
-        // 单曲循环模式下不切换歌曲
-        return;
-      case PlayMode.sequence:
-        if (_currentIndex > 0) {
-          _currentIndex--;
-        } else {
-          // 顺序播放模式下，播放到第一首停止
-          return;
-        }
-        break;
+    final previousSong = getPreviousSong();
+    if (previousSong != null) {
+      final previousIndex = _playlist.indexOf(previousSong);
+      _currentIndex = previousIndex;
+      await setCurrentSong(previousSong);
+      await startPlayback();
     }
-
-    await setCurrentSong(_playlist[_currentIndex]);
-    await startPlayback();
   }
 
   // 切换随机播放模式
@@ -290,14 +280,14 @@ class PlayerService extends ChangeNotifier {
 
   void togglePlayMode() {
     switch (_playMode) {
+      case PlayMode.sequence:
+        _playMode = PlayMode.loop;
+        break;
       case PlayMode.loop:
         _playMode = PlayMode.single;
         break;
       case PlayMode.single:
         _playMode = PlayMode.sequence;
-        break;
-      case PlayMode.sequence:
-        _playMode = PlayMode.loop;
         break;
     }
     notifyListeners();
@@ -355,6 +345,66 @@ class PlayerService extends ChangeNotifier {
       print('开始播放失败: $e');
       rethrow;
     }
+  }
+
+  Song? getNextSong() {
+    if (_playlist.isEmpty) return null;
+
+    switch (_playMode) {
+      case PlayMode.single:
+        return _currentSong; // 单曲循环，返回当前歌曲
+      case PlayMode.sequence:
+        // 顺序播放，到最后一首就停止
+        if (_currentIndex < _playlist.length - 1) {
+          return _playlist[_currentIndex + 1];
+        }
+        return null;
+      case PlayMode.loop:
+        // 列表循环，到最后一首返回第一首
+        final nextIndex = (_currentIndex + 1) % _playlist.length;
+        return _playlist[nextIndex];
+    }
+  }
+
+  Song? getPreviousSong() {
+    if (_playlist.isEmpty) return null;
+
+    switch (_playMode) {
+      case PlayMode.single:
+        return _currentSong; // 单曲循环，返回当前歌曲
+      case PlayMode.sequence:
+      case PlayMode.loop:
+        // 到第一首就返回第一首
+        if (_currentIndex > 0) {
+          return _playlist[_currentIndex - 1];
+        } else if (_playMode == PlayMode.loop) {
+          return _playlist.last; // 循环模式下，从第一首切到最后一首
+        }
+        return null;
+    }
+  }
+
+  /// 自动播放下一首（当前歌曲播放完成时调用）
+  Future<void> _onSongComplete() async {
+    final nextSong = getNextSong();
+    if (nextSong != null) {
+      await playNext();
+    } else {
+      // 如果没有下一首，停止播放
+      await _audioPlayer.stop();
+    }
+  }
+
+  /// 暂停播放
+  Future<void> pause() async {
+    await _audioPlayer.pause();
+    notifyListeners();
+  }
+
+  /// 恢复播放
+  Future<void> resume() async {
+    await _audioPlayer.play();
+    notifyListeners();
   }
 
   @override

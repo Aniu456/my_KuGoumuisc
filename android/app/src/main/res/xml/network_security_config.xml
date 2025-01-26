@@ -6,4 +6,15 @@
             <certificates src="user" />
         </trust-anchors>
     </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">8.148.7.143</domain>
+        <!-- 添加音频文件服务器域名 -->
+        <domain includeSubdomains="true">ip.kugou.com</domain>
+        <domain includeSubdomains="true">kugou.com</domain>
+        <domain includeSubdomains="true">cdn.kugou.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
 </network-security-config> 

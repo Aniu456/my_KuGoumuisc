@@ -312,6 +312,16 @@ class ApiService {
       final responseData = response.data;
       print('获取到的歌曲URL响应数据: $responseData');
 
+      // 检查歌曲权限状态
+      if (responseData['status'] == 2) {
+        final failProcess = responseData['fail_process'] as List?;
+        if (failProcess?.contains('pkg') == true ||
+            failProcess?.contains('buy') == true) {
+          throw Exception('该歌曲需要购买或者VIP会员才能播放');
+        }
+        throw Exception('无法播放该歌曲，可能是版权限制');
+      }
+
       // 首先尝试使用主 URL 列表
       if (responseData['url'] != null &&
           responseData['url'] is List &&
