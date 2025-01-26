@@ -93,6 +93,7 @@ class _MusicListScreenState extends State<MusicListScreen>
 
       switch (widget.type) {
         case MusicListType.favorite:
+        case MusicListType.playlist:
           if (widget.playlist != null) {
             final songsData = await apiService.getPlaylistTracks(
               widget.playlist!.globalCollectionId,
@@ -131,23 +132,6 @@ class _MusicListScreenState extends State<MusicListScreen>
 
         case MusicListType.local:
           // TODO: 加载本地音乐
-          break;
-
-        case MusicListType.playlist:
-          if (widget.playlist != null) {
-            final songsData = await apiService.getPlaylistTracks(
-              widget.playlist!.globalCollectionId,
-              page: _currentPage,
-              pageSize: _pageSize,
-            );
-
-            setState(() {
-              _songs =
-                  songsData.map((songData) => Song.fromJson(songData)).toList();
-              _hasMore = songsData.length >= _pageSize;
-              _filterAndSortSongs();
-            });
-          }
           break;
       }
     } catch (e) {
