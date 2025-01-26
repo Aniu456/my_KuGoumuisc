@@ -89,42 +89,64 @@ class _MusicListScreenState extends State<MusicListScreen>
     });
 
     try {
-      if (widget.playlist != null) {
-        final apiService = context.read<ApiService>();
-        final songsData = await apiService.getPlaylistTracks(
-          widget.playlist!.globalCollectionId,
-          page: _currentPage,
-          pageSize: _pageSize,
-        );
+      final apiService = context.read<ApiService>();
 
-        setState(() {
-          _songs =
-              songsData.map((songData) => Song.fromJson(songData)).toList();
-          _hasMore = songsData.length >= _pageSize;
-          _filterAndSortSongs();
-        });
-      } else {
-        switch (widget.type) {
-          case MusicListType.favorite:
-            // TODO: 加载收藏的音乐
-            break;
-          case MusicListType.recent:
-            // TODO: 加载最近播放
-            break;
-          case MusicListType.local:
-            // TODO: 加载本地音乐
-            break;
-          case MusicListType.playlist:
-            // TODO: Handle this case.
-            throw UnimplementedError();
-        }
+      switch (widget.type) {
+        case MusicListType.favorite:
+          // TODO: 加载收藏的音乐
+          break;
+
+        case MusicListType.recent:
+          final response = await apiService.getRecentSongs();
+          setState(() {
+            _songs = response.songs
+                .map((recentSong) => Song(
+                      hash: recentSong.hash,
+                      name: '${recentSong.singername} - ${recentSong.songname}',
+                      cover: recentSong.cover,
+                      albumId: '',
+                      audioId: '',
+                      size: 0,
+                      singerName: recentSong.singername,
+                      albumImage: recentSong.cover,
+                    ))
+                .toList();
+            _hasMore = false; // 最近播放没有分页
+            _filterAndSortSongs();
+          });
+          break;
+
+        case MusicListType.local:
+          // TODO: 加载本地音乐
+          break;
+
+        case MusicListType.playlist:
+          if (widget.playlist != null) {
+            final songsData = await apiService.getPlaylistTracks(
+              widget.playlist!.globalCollectionId,
+              page: _currentPage,
+              pageSize: _pageSize,
+            );
+
+            setState(() {
+              _songs =
+                  songsData.map((songData) => Song.fromJson(songData)).toList();
+              _hasMore = songsData.length >= _pageSize;
+              _filterAndSortSongs();
+            });
+          }
+          break;
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('加载失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载失败: $e')),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

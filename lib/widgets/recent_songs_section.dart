@@ -6,7 +6,7 @@ import '../services/api_service.dart';
 import '../services/player_service.dart';
 import '../utils/image_utils.dart';
 import '../pages/player_page.dart';
-import '../pages/recent_songs_page.dart';
+import 'music_list_screen.dart';
 
 class RecentSongsSection extends StatefulWidget {
   const RecentSongsSection({super.key});
@@ -120,7 +120,10 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const RecentSongsPage(),
+                      builder: (context) => const MusicListScreen(
+                        type: MusicListType.recent,
+                        title: '最近播放',
+                      ),
                     ),
                   );
                 },

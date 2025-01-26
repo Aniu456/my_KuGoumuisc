@@ -429,7 +429,10 @@ class _ProfileTabState extends State<ProfileTab>
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const RecentSongsPage(),
+                                  builder: (context) => const MusicListScreen(
+                                    type: MusicListType.recent,
+                                    title: '最近播放',
+                                  ),
                                 ),
                               );
                             },
