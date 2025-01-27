@@ -116,10 +116,10 @@ class _MusicListScreenState extends State<MusicListScreen>
             _songs = response.songs
                 .map((recentSong) => Song(
                       hash: recentSong.hash,
-                      name: '${recentSong.singername} - ${recentSong.songname}',
+                      name: '${recentSong.singername} - ${recentSong.name}',
                       cover: recentSong.cover,
-                      albumId: '',
-                      audioId: '',
+                      albumId: recentSong.albumId,
+                      audioId: recentSong.audioId,
                       size: 0,
                       singerName: recentSong.singername,
                       albumImage: recentSong.cover,

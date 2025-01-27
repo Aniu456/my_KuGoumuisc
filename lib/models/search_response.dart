@@ -34,6 +34,7 @@ class SearchSong {
   final String fileName;
   final String songName;
   final List<Singer> singers;
+  final String mixSongId;
 
   SearchSong({
     required this.sqFileHash,
@@ -44,6 +45,7 @@ class SearchSong {
     required this.fileName,
     required this.songName,
     required this.singers,
+    required this.mixSongId,
   });
 
   factory SearchSong.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,7 @@ class SearchSong {
       singers: json['Singers'] != null
           ? (json['Singers'] as List).map((x) => Singer.fromJson(x)).toList()
           : [],
+      mixSongId: json['MixSongID']?.toString() ?? '',
     );
   }
 }

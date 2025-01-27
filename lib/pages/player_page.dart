@@ -22,6 +22,8 @@ class _PlayerPageState extends State<PlayerPage> {
   int? _selectedLyricIndex;
   final ScrollController _lyricsScrollController = ScrollController();
   String? _currentSongHash;
+  bool _isFavorite = false;
+  bool _isCheckingFavorite = false;
 
   @override
   void initState() {
@@ -38,6 +40,7 @@ class _PlayerPageState extends State<PlayerPage> {
     if (newHash != null && newHash != _currentSongHash) {
       _currentSongHash = newHash;
       _loadLyricsIfNeeded();
+      _checkFavoriteStatus();
     }
   }
 
@@ -77,6 +80,78 @@ class _PlayerPageState extends State<PlayerPage> {
           _lyrics = null;
           _lyricLines = [];
         });
+      }
+    }
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    if (_isCheckingFavorite) return;
+
+    final playerService = context.read<PlayerService>();
+    final currentSong = playerService.currentSongInfo;
+    if (currentSong == null) return;
+
+    setState(() => _isCheckingFavorite = true);
+
+    try {
+      final apiService = context.read<ApiService>();
+      final isFavorite = await apiService.isInFavorite(currentSong.hash);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isFavorite;
+          _isCheckingFavorite = false;
+        });
+      }
+    } catch (e) {
+      print('检查收藏状态失败: $e');
+      if (mounted) {
+        setState(() => _isCheckingFavorite = false);
+      }
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final apiService = context.read<ApiService>();
+    final playerService = context.read<PlayerService>();
+    final currentSong = playerService.currentSongInfo;
+
+    if (currentSong == null) return;
+
+    try {
+      if (_isFavorite) {
+        // 取消收藏
+        final success =
+            await apiService.removeFromFavorite(currentSong.mixsongid ?? '');
+        if (success && mounted) {
+          setState(() => _isFavorite = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已取消收藏'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // 添加收藏
+        final success = await apiService.addToFavorite(currentSong);
+        if (success && mounted) {
+          setState(() => _isFavorite = true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已添加到我喜欢'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isFavorite ? '取消收藏失败' : '收藏失败: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     }
   }
@@ -414,38 +489,7 @@ class _PlayerPageState extends State<PlayerPage> {
                       ),
                     ),
                     // 歌词预览
-                    GestureDetector(
-                      onTap: _toggleLyricsView,
-                      child: Container(
-                        height: 60,
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: _lyrics != null && _lyricLines.isNotEmpty
-                            ? Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: _getPreviewLyrics()
-                                    .map((line) => Text(
-                                          line,
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                        ))
-                                    .toList(),
-                              )
-                            : const Center(
-                                child: Text(
-                                  '暂无歌词',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
+                    _buildLyricsPreview(),
                   ],
                 ),
               ),
@@ -466,11 +510,7 @@ class _PlayerPageState extends State<PlayerPage> {
                             () => playerService.togglePlayMode(),
                             color: Colors.black87,
                           ),
-                          _buildControlButton(
-                            Icons.favorite_border,
-                            () {},
-                            color: Colors.black87,
-                          ),
+                          _buildFavoriteButton(),
                           _buildControlButton(
                             Icons.queue_music,
                             () => _showPlaylist(context, playerService),
@@ -846,7 +886,23 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Widget _buildControlButton(IconData icon, VoidCallback onPressed,
-      {Color color = Colors.white}) {
+      {Color color = Colors.white, bool isLoading = false}) {
+    if (isLoading) {
+      return SizedBox(
+        width: 52,
+        height: 52,
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -911,6 +967,50 @@ class _PlayerPageState extends State<PlayerPage> {
             size: 42,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFavoriteButton() {
+    return _buildControlButton(
+      _isFavorite ? Icons.favorite : Icons.favorite_border,
+      _toggleFavorite,
+      color: _isFavorite ? Colors.red : Colors.black87,
+      isLoading: _isCheckingFavorite,
+    );
+  }
+
+  Widget _buildLyricsPreview() {
+    return GestureDetector(
+      onTap: _toggleLyricsView,
+      child: Container(
+        height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: _lyrics != null && _lyricLines.isNotEmpty
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: _getPreviewLyrics()
+                    .map((line) => Text(
+                          line,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ))
+                    .toList(),
+              )
+            : const Center(
+                child: Text(
+                  '暂无歌词',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -1077,17 +1177,6 @@ class _PlayerPageState extends State<PlayerPage> {
         ),
       ),
     );
-  }
-
-  Widget _buildPlayModeIcon(PlayMode mode) {
-    switch (mode) {
-      case PlayMode.sequence:
-        return const Icon(Icons.repeat_one_outlined);
-      case PlayMode.loop:
-        return const Icon(Icons.repeat);
-      case PlayMode.single:
-        return const Icon(Icons.repeat_one);
-    }
   }
 }
 

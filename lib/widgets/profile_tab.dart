@@ -9,6 +9,7 @@ import 'music_list_screen.dart';
 import 'recent_songs_section.dart';
 import '../pages/search_page.dart';
 import '../pages/local_songs_page.dart';
+import '../services/player_service.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -25,6 +26,7 @@ class _ProfileTabState extends State<ProfileTab>
   bool _isFirstLoad = true;
   bool _isPurchasedExpanded = false;
   int _localSongCount = 0;
+  int _recentSongsCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -33,6 +35,7 @@ class _ProfileTabState extends State<ProfileTab>
   void initState() {
     super.initState();
     _loadLocalSongCount();
+    _loadRecentSongsCount();
   }
 
   @override
@@ -43,7 +46,13 @@ class _ProfileTabState extends State<ProfileTab>
     if (_isFirstLoad && state is AuthAuthenticated) {
       _isFirstLoad = false;
       _loadFromCache();
+      _loadRecentSongsCount(); // 在这里加载最近播放数量
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
   }
 
   Future<void> _loadLocalSongCount() async {
@@ -57,6 +66,23 @@ class _ProfileTabState extends State<ProfileTab>
       }
     } catch (e) {
       print('加载本地歌曲数量失败: $e');
+    }
+  }
+
+  Future<void> _loadRecentSongsCount() async {
+    if (!mounted) return;
+    final apiService = context.read<ApiService>();
+    try {
+      final response = await apiService.getRecentSongs();
+      if (mounted) {
+        setState(() {
+          // 最近播放只显示前20首
+          _recentSongsCount = response.songs.length;
+        });
+      }
+    } catch (e) {
+      // 如果获取失败，保持默认值0
+      print('获取最近播放数量失败: $e');
     }
   }
 
@@ -75,13 +101,33 @@ class _ProfileTabState extends State<ProfileTab>
   Future<void> _refreshFromServer() async {
     try {
       await _loadLocalSongCount(); // 刷新本地歌曲数量
+      await _loadRecentSongsCount(); // 刷新最近播放数量
+
       final apiService = context.read<ApiService>();
+
+      // 1. 获取用户详情和VIP信息
+      final userDetail = await apiService.getUserDetail();
+      final vipInfo = await apiService.getUserVipDetail();
+
+      // 2. 获取最近播放记录
+      // final recentSongs = await apiService.getRecentSongs(forceRefresh: true);
+
+      // 3. 获取用户歌单
       final response = await apiService.getUserPlaylists(forceRefresh: true);
+
+      // 4. 更新用户状态
+      if (mounted) {
+        context.read<AuthBloc>().add(AuthUpdateUserInfo(
+              userDetail: userDetail,
+              vipInfo: vipInfo,
+            ));
+      }
+
       _updatePlaylistsData(response);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刷新歌单失败: $e')),
+          SnackBar(content: Text('刷新数据失败: $e')),
         );
       }
     }
@@ -152,7 +198,7 @@ class _ProfileTabState extends State<ProfileTab>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // 必须调用 super.build
+    super.build(context);
 
     final state = context.watch<AuthBloc>().state;
     final isAuthenticated = state is AuthAuthenticated;
@@ -286,7 +332,8 @@ class _ProfileTabState extends State<ProfileTab>
                                       : null,
                                 ),
                               ),
-                              if (user?.isVip ?? false)
+                              if (user?.isVipValid ?? false)
+                                // if (true)
                                 Positioned(
                                   right: -2,
                                   bottom: -2,
@@ -336,7 +383,7 @@ class _ProfileTabState extends State<ProfileTab>
                               ],
                             ),
                           ),
-                          if (isAuthenticated && user!.isVip)
+                          if (isAuthenticated && user!.isVipValid)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 6, vertical: 3),
@@ -354,7 +401,7 @@ class _ProfileTabState extends State<ProfileTab>
                                   ),
                                   const SizedBox(width: 3),
                                   Text(
-                                    '${DateTime.parse(user.vipEndTime!).difference(DateTime.now()).inDays}天',
+                                    '${user.vipRemainingDays}天',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 10,
@@ -417,7 +464,7 @@ class _ProfileTabState extends State<ProfileTab>
                           _buildFeatureItem(
                             icon: Icons.access_time,
                             label: '最近',
-                            count: isAuthenticated ? '30' : '0',
+                            count: isAuthenticated ? '$_recentSongsCount' : '0',
                             color: Colors.blue[400]!,
                             onTap: () {
                               final state = context.read<AuthBloc>().state;

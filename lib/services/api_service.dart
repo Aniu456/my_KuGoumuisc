@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/recent_song.dart';
 import '../models/search_response.dart';
+import '../models/play_song_info.dart';
 
 /// API服务类
 /// 负责处理所有与后端服务器的HTTP请求
@@ -205,6 +206,20 @@ class ApiService {
     }
   }
 
+  /// 获取用户VIP详情
+  Future<Map<String, dynamic>> getUserVipDetail() async {
+    try {
+      final response = await _dio.get('/user/vip/detail');
+      print('获取VIP详情响应: ${response.data}');
+      if (response.data['status'] == 1) {
+        return response.data['data'];
+      }
+      throw Exception(response.data['error_msg'] ?? '获取VIP信息失败');
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   /// 清除歌单缓存
   void _clearPlaylistsCache() {
     _prefs.remove(_playlistsCacheKey);
@@ -214,14 +229,17 @@ class ApiService {
   Future<Map<String, dynamic>> getUserPlaylists(
       {bool forceRefresh = false}) async {
     try {
+      print('获取用户歌单 - forceRefresh: $forceRefresh');
       // 尝试从缓存获取
       if (!forceRefresh) {
         final cachedData = _getValidCache(_playlistsCacheKey);
         if (cachedData != null) {
+          print('使用缓存的歌单数据: $cachedData');
           // 在后台刷新缓存
           Future.delayed(Duration.zero, () async {
             try {
               final response = await _dio.get('/user/playlist');
+              print('后台刷新获取的数据: ${response.data}');
               if (response.data['status'] == 1) {
                 final cacheData = {
                   'data': response.data,
@@ -241,7 +259,9 @@ class ApiService {
       }
 
       // 从服务器获取新数据
+      print('正在从服务器获取新数据...');
       final response = await _dio.get('/user/playlist');
+      print('服务器返回数据: ${response.data}');
       if (response.data['status'] == 1) {
         final cacheData = {
           'data': response.data,
@@ -258,12 +278,106 @@ class ApiService {
       // 如果请求失败但有缓存，返回缓存
       final cachedData = _getValidCache(_playlistsCacheKey);
       if (cachedData != null) {
+        print('请求失败，使用缓存数据: $cachedData');
         return {
           'info': cachedData['data']['info'] as List,
           'list_count': cachedData['data']['list_count'],
         };
       }
       rethrow;
+    }
+  }
+
+  /// 获取"我喜欢"歌单ID
+  Future<String?> getFavoritePlaylistId() async {
+    try {
+      final playlists = await getUserPlaylists();
+      final List playlistInfo = playlists['info'] as List;
+
+      // 打印所有歌单名称，帮助调试
+      print('获取到的歌单列表:');
+      for (var playlist in playlistInfo) {
+        print(
+            '歌单名称: ${playlist['name']}, ID: ${playlist['listid']}, GID: ${playlist['global_collection_id']}');
+      }
+
+      // 查找名为"我喜欢"的歌单
+      try {
+        final favoritePlaylist = playlistInfo.firstWhere(
+          (playlist) => playlist['name'].toString().trim() == '我喜欢',
+        );
+        final listId = favoritePlaylist['listid']?.toString();
+        print('找到"我喜欢"歌单，ID: $listId');
+        return listId;
+      } catch (e) {
+        print('未找到"我喜欢"歌单，尝试查找"收藏"歌单');
+        // 尝试查找名为"收藏"的歌单作为备选
+        try {
+          final favoritePlaylist = playlistInfo.firstWhere(
+            (playlist) => playlist['name'].toString().trim() == '收藏',
+          );
+          final listId = favoritePlaylist['listid']?.toString();
+          print('找到"收藏"歌单，ID: $listId');
+          return listId;
+        } catch (e) {
+          print('也未找到"收藏"歌单');
+          return null;
+        }
+      }
+    } catch (e) {
+      print('获取我喜欢歌单失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 添加歌曲到"我喜欢"歌单
+  Future<bool> addToFavorite(PlaySongInfo songInfo) async {
+    print('准备添加歌曲到"我喜欢"歌单: ${songInfo.title}');
+    print(
+        '歌曲完整信息: hash=${songInfo.hash}, title=${songInfo.title}, artist=${songInfo.artist}, mixsongid=${songInfo.mixsongid}');
+
+    final listId = await getFavoritePlaylistId();
+    if (listId == null) {
+      throw Exception('未找到"我喜欢"歌单');
+    }
+
+    final songData = <String, dynamic>{
+      'name': songInfo.title,
+      'hash': songInfo.hash,
+      'mixsongid': songInfo.mixsongid ?? '', // 如果为空则使用空字符串
+    };
+
+    print('歌曲信息: $songData');
+    return addSongToPlaylist(listId, songData);
+  }
+
+  /// 添加歌曲到歌单
+  Future<bool> addSongToPlaylist(
+      String listId, Map<String, dynamic> songData) async {
+    try {
+      print('正在添加歌曲到歌单，歌单ID: $listId, 歌曲数据: $songData');
+
+      // 构建数据字符串：歌名|hash|mixsongid
+      final dataString =
+          '${songData['name']}|${songData['hash']}|${songData['mixsongid']}';
+      print('发送的数据: $dataString');
+
+      final response = await _dio.post(
+        '/playlist/tracks/add',
+        queryParameters: {
+          'listid': listId,
+          'data': dataString,
+        },
+      );
+
+      print('添加歌曲响应: ${response.data}');
+      if (response.data['status'] == 1) {
+        return true;
+      }
+      throw Exception(response.data['error_msg'] ?? '添加歌曲到歌单失败');
+    } on DioException catch (e) {
+      print('添加歌曲到歌单失败: ${e.response?.data}');
+      throw _handleDioError(e);
     }
   }
 
@@ -422,8 +536,12 @@ class ApiService {
   }
 
   /// 获取最近播放记录
-  Future<RecentSongsResponse> getRecentSongs(
-      {bool forceRefresh = false}) async {
+  /// @param bq 分页参数，可选
+  /// @param forceRefresh 是否强制刷新，默认false
+  Future<RecentSongsResponse> getRecentSongs({
+    String? bq,
+    bool forceRefresh = false,
+  }) async {
     try {
       // 尝试从缓存获取
       if (!forceRefresh) {
@@ -431,13 +549,13 @@ class ApiService {
         if (cachedData != null) {
           // 在后台刷新缓存
           _refreshCacheInBackground(
-              _recentSongsCacheKey, () => _fetchRecentSongs());
+              _recentSongsCacheKey, () => _fetchRecentSongs(bq: bq));
           return RecentSongsResponse.fromJson(cachedData);
         }
       }
 
       // 从服务器获取新数据
-      return await _fetchRecentSongs();
+      return await _fetchRecentSongs(bq: bq);
     } catch (e) {
       // 如果请求失败但有缓存，返回缓存
       final cachedData = _getValidCache(_recentSongsCacheKey);
@@ -449,8 +567,16 @@ class ApiService {
   }
 
   // 从服务器获取最近播放数据
-  Future<RecentSongsResponse> _fetchRecentSongs() async {
-    final response = await _dio.get('/lastest/songs/listen');
+  Future<RecentSongsResponse> _fetchRecentSongs({String? bq}) async {
+    final queryParams = <String, dynamic>{};
+    if (bq != null && bq.isNotEmpty) {
+      queryParams['bq'] = bq;
+    }
+
+    final response =
+        await _dio.get('/user/history', queryParameters: queryParams);
+    print('获取最近播放响应: ${response.data}');
+
     if (response.data['status'] == 1) {
       final Map<String, dynamic> cacheData = {
         'data': response.data,
@@ -460,7 +586,7 @@ class ApiService {
       await _updateCache(_recentSongsCacheKey, cacheData);
       return RecentSongsResponse.fromJson(response.data);
     } else {
-      throw Exception(response.data['errmsg'] ?? '获取最近播放记录失败');
+      throw Exception(response.data['error_msg'] ?? '获取最近播放记录失败');
     }
   }
 
@@ -657,6 +783,56 @@ class ApiService {
     } catch (e) {
       print('搜索歌曲失败: $e');
       rethrow;
+    }
+  }
+
+  /// 从歌单删除歌曲
+  Future<bool> removeSongFromPlaylist(String listId, String fileId) async {
+    try {
+      print('正在从歌单删除歌曲，歌单ID: $listId, fileId: $fileId');
+
+      final response = await _dio.post(
+        '/playlist/tracks/del',
+        queryParameters: {
+          'listid': listId,
+          'fileids': fileId,
+        },
+      );
+
+      print('删除歌曲响应: ${response.data}');
+      if (response.data['status'] == 1) {
+        return true;
+      }
+      throw Exception(response.data['error_msg'] ?? '从歌单删除歌曲失败');
+    } on DioException catch (e) {
+      print('从歌单删除歌曲失败: ${e.response?.data}');
+      throw _handleDioError(e);
+    }
+  }
+
+  /// 从"我喜欢"歌单删除歌曲
+  Future<bool> removeFromFavorite(String fileId) async {
+    final listId = await getFavoritePlaylistId();
+    if (listId == null) {
+      throw Exception('未找到"我喜欢"歌单');
+    }
+    return removeSongFromPlaylist(listId, fileId);
+  }
+
+  /// 检查歌曲是否在"我喜欢"歌单中
+  Future<bool> isInFavorite(String hash) async {
+    try {
+      final listId = await getFavoritePlaylistId();
+      if (listId == null) {
+        return false;
+      }
+
+      // 获取歌单中的所有歌曲
+      final songs = await getPlaylistTracks(listId);
+      return songs.any((song) => song['hash'] == hash);
+    } catch (e) {
+      print('检查收藏状态失败: $e');
+      return false;
     }
   }
 }

@@ -7,6 +7,7 @@ class Song {
   final String cover;
   final String singerName;
   final String albumImage;
+  final String? mixsongid;
 
   // 从name中解析出歌手和歌曲名
   String get title => name.split(' - ').last;
@@ -21,6 +22,7 @@ class Song {
     required this.cover,
     required this.singerName,
     required this.albumImage,
+    this.mixsongid,
   });
 
   factory Song.fromJson(Map<String, dynamic> json) {
@@ -35,6 +37,7 @@ class Song {
       cover: json['cover']?.toString() ?? '',
       singerName: json['singername'] ?? json['singer_name'] ?? '',
       albumImage: json['album_img'] ?? json['album_image'] ?? '',
+      mixsongid: json['mixsongid']?.toString(),
     );
   }
 
@@ -48,6 +51,7 @@ class Song {
       'cover': cover,
       'singer_name': singerName,
       'album_image': albumImage,
+      'mixsongid': mixsongid,
     };
   }
 }

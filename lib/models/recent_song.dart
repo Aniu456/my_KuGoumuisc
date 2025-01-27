@@ -1,57 +1,49 @@
 class RecentSong {
   final String hash;
-  final String songname;
+  final String name;
   final String singername;
   final String cover;
+  final String albumId;
+  final String audioId;
 
   RecentSong({
     required this.hash,
-    required this.songname,
+    required this.name,
     required this.singername,
     required this.cover,
+    required this.albumId,
+    required this.audioId,
   });
 
   factory RecentSong.fromJson(Map<String, dynamic> json) {
     final info = json['info'] as Map<String, dynamic>;
     return RecentSong(
       hash: info['hash']?.toString() ?? '',
-      songname: info['songname']?.toString() ?? '',
+      name: info['name']?.toString() ?? '',
       singername: info['singername']?.toString() ?? '',
       cover: info['cover']?.toString() ?? '',
+      albumId: info['album_id']?.toString() ?? '',
+      audioId: info['audio_id']?.toString() ?? '',
     );
   }
 }
 
 class RecentSongsResponse {
-  final int cursor;
-  final RecentSong? currentSong;
+  final String bp;
   final List<RecentSong> songs;
 
   RecentSongsResponse({
-    required this.cursor,
-    this.currentSong,
+    required this.bp,
     required this.songs,
   });
 
   factory RecentSongsResponse.fromJson(Map<String, dynamic> json) {
     final data = json['data'] as Map<String, dynamic>;
-
-    // 解析当前播放的歌曲
-    RecentSong? currentSong;
-    if (data['curr_song'] != null) {
-      currentSong = RecentSong.fromJson(data['curr_song']);
-    }
-
-    // 解析最近播放列表
-    final songsList = (data['songs'] as List?)
-            ?.map((songJson) => RecentSong.fromJson(songJson))
-            .toList() ??
-        [];
-
     return RecentSongsResponse(
-      cursor: data['cursor'] as int? ?? 0,
-      currentSong: currentSong,
-      songs: songsList,
+      bp: data['bp']?.toString() ?? '',
+      songs: (data['songs'] as List? ?? [])
+          .map((songData) => RecentSong.fromJson(songData))
+          .toList(),
     );
   }
 }
