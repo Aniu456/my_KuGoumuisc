@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../models/recent_song.dart';
 import '../models/search_response.dart';
 import '../models/play_song_info.dart';
+import '../models/song_mv.dart';
 
 /// API服务类
 /// 负责处理所有与后端服务器的HTTP请求
@@ -15,6 +16,7 @@ class ApiService {
   /// 本地存储的歌单缓存键名
   static const String _playlistsCacheKey = 'playlists_cache';
   static const String _recentSongsCacheKey = 'recent_songs_cache';
+  static const String _favoritePlaylistIdKey = 'favorite_playlist_id';
   static const Duration _cacheExpiration = Duration(minutes: 30); // 缓存过期时间
   static const int _maxRetries = 3; // 最大重试次数
 
@@ -101,16 +103,6 @@ class ApiService {
     return match?.group(1) ?? '';
   }
 
-  // 清除所有认证相关数据
-  void _clearAuthData() {
-    _prefs.remove('auth_token');
-    _prefs.remove('user_id');
-    _prefs.remove('vip_token');
-    _prefs.remove('vip_type');
-    _prefs.remove('user_data');
-    _clearPlaylistsCache();
-  }
-
   /// 手机号登录
   /// @param phone 手机号
   /// @param code 验证码
@@ -128,6 +120,8 @@ class ApiService {
 
       final responseData = response.data as Map<String, dynamic>;
       if (responseData['status'] == 1) {
+        // 登录成功后立即缓存我喜欢歌单ID
+        await _cacheFavoritePlaylistId();
         return responseData;
       }
 
@@ -157,6 +151,8 @@ class ApiService {
 
       final responseData = response.data as Map<String, dynamic>;
       if (responseData['status'] == 1) {
+        // 登录成功后立即缓存我喜欢歌单ID
+        await _cacheFavoritePlaylistId();
         return responseData;
       }
 
@@ -164,6 +160,49 @@ class ApiService {
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
+  }
+
+  /// 缓存我喜欢歌单ID
+  Future<void> _cacheFavoritePlaylistId() async {
+    try {
+      final playlists = await getUserPlaylists();
+      final List playlistInfo = playlists['info'] as List;
+
+      // 查找"我喜欢"歌单
+      final favoritePlaylist = playlistInfo.firstWhere(
+        (playlist) => playlist['name'].toString().trim() == '我喜欢',
+        orElse: () => playlistInfo.firstWhere(
+          (playlist) => playlist['name'].toString().trim() == '收藏',
+          orElse: () => {},
+        ),
+      );
+
+      if (favoritePlaylist.isNotEmpty) {
+        final listId = favoritePlaylist['listid']?.toString();
+        if (listId != null && listId.isNotEmpty) {
+          await _prefs.setString(_favoritePlaylistIdKey, listId);
+          print('成功缓存我喜欢歌单ID: $listId');
+        }
+      }
+    } catch (e) {
+      print('缓存我喜欢歌单ID失败: $e');
+    }
+  }
+
+  /// 获取缓存的我喜欢歌单ID
+  String? getFavoritePlaylistIdFromCache() {
+    return _prefs.getString(_favoritePlaylistIdKey);
+  }
+
+  /// 清除所有认证相关数据
+  void _clearAuthData() {
+    _prefs.remove('auth_token');
+    _prefs.remove('user_id');
+    _prefs.remove('vip_token');
+    _prefs.remove('vip_type');
+    _prefs.remove('user_data');
+    _prefs.remove(_favoritePlaylistIdKey);
+    _clearPlaylistsCache();
   }
 
   /// 发送验证码
@@ -288,57 +327,20 @@ class ApiService {
     }
   }
 
-  /// 获取"我喜欢"歌单ID
-  Future<String?> getFavoritePlaylistId() async {
-    try {
-      final playlists = await getUserPlaylists();
-      final List playlistInfo = playlists['info'] as List;
-
-      // 打印所有歌单名称，帮助调试
-      print('获取到的歌单列表:');
-      for (var playlist in playlistInfo) {
-        print(
-            '歌单名称: ${playlist['name']}, ID: ${playlist['listid']}, GID: ${playlist['global_collection_id']}');
-      }
-
-      // 查找名为"我喜欢"的歌单
-      try {
-        final favoritePlaylist = playlistInfo.firstWhere(
-          (playlist) => playlist['name'].toString().trim() == '我喜欢',
-        );
-        final listId = favoritePlaylist['listid']?.toString();
-        print('找到"我喜欢"歌单，ID: $listId');
-        return listId;
-      } catch (e) {
-        print('未找到"我喜欢"歌单，尝试查找"收藏"歌单');
-        // 尝试查找名为"收藏"的歌单作为备选
-        try {
-          final favoritePlaylist = playlistInfo.firstWhere(
-            (playlist) => playlist['name'].toString().trim() == '收藏',
-          );
-          final listId = favoritePlaylist['listid']?.toString();
-          print('找到"收藏"歌单，ID: $listId');
-          return listId;
-        } catch (e) {
-          print('也未找到"收藏"歌单');
-          return null;
-        }
-      }
-    } catch (e) {
-      print('获取我喜欢歌单失败: $e');
-      rethrow;
-    }
-  }
-
   /// 添加歌曲到"我喜欢"歌单
   Future<bool> addToFavorite(PlaySongInfo songInfo) async {
     print('准备添加歌曲到"我喜欢"歌单: ${songInfo.title}');
     print(
         '歌曲完整信息: hash=${songInfo.hash}, title=${songInfo.title}, artist=${songInfo.artist}, mixsongid=${songInfo.mixsongid}');
 
-    final listId = await getFavoritePlaylistId();
+    final listId = getFavoritePlaylistIdFromCache();
     if (listId == null) {
-      throw Exception('未找到"我喜欢"歌单');
+      // 如果缓存中没有，尝试重新获取并缓存
+      await _cacheFavoritePlaylistId();
+      final newListId = getFavoritePlaylistIdFromCache();
+      if (newListId == null) {
+        throw Exception('未找到"我喜欢"歌单');
+      }
     }
 
     final songData = <String, dynamic>{
@@ -348,7 +350,7 @@ class ApiService {
     };
 
     print('歌曲信息: $songData');
-    return addSongToPlaylist(listId, songData);
+    return addSongToPlaylist(listId!, songData);
   }
 
   /// 添加歌曲到歌单
@@ -810,29 +812,51 @@ class ApiService {
     }
   }
 
-  /// 从"我喜欢"歌单删除歌曲
-  Future<bool> removeFromFavorite(String fileId) async {
-    final listId = await getFavoritePlaylistId();
-    if (listId == null) {
-      throw Exception('未找到"我喜欢"歌单');
+  // 1. 获取MV列表
+  Future<List<MvInfo>> getMVList(String albumAudioId) async {
+    final response = await _dio.get('/kmr/audio/mv', queryParameters: {
+      'album_audio_id': albumAudioId,
+    });
+
+    if (response.data['status'] == 1) {
+      final List<dynamic> mvList = response.data['data'][0];
+      return mvList.map((json) => MvInfo.fromJson(json)).toList();
     }
-    return removeSongFromPlaylist(listId, fileId);
+    throw Exception('获取MV列表失败');
   }
 
-  /// 检查歌曲是否在"我喜欢"歌单中
-  Future<bool> isInFavorite(String hash) async {
-    try {
-      final listId = await getFavoritePlaylistId();
-      if (listId == null) {
-        return false;
-      }
-
-      // 获取歌单中的所有歌曲
-      final songs = await getPlaylistTracks(listId);
-      return songs.any((song) => song['hash'] == hash);
-    } catch (e) {
-      print('检查收藏状态失败: $e');
-      return false;
+  // 2. 获取视频详细信息
+  Future<String?> getVideoHash(int videoId) async {
+    final response = await _dio.get('/video/detail', queryParameters: {
+      'id': videoId,
+    });
+    // print(response.data['data']['hd_hash_265']);
+    if (response.data['status'] == 1) {
+      // 优先使用FHD版本，如果没有则使用HD版本
+      final String? fhdHash = response.data['data'][0]['fhd_hash_265'];
+      final String? hdHash = response.data['data'][0]['hd_hash_265'];
+      return fhdHash ?? hdHash;
     }
+    throw Exception('获取视频详情失败');
+  }
+
+  // 3. 获取视频播放地址
+  Future<String> getVideoUrl(String videoHash) async {
+    final response = await _dio.get('/video/url', queryParameters: {
+      'hash': videoHash,
+    });
+
+    if (response.data['status'] == 1) {
+      final data = response.data['data'][videoHash.toLowerCase()];
+      // 优先使用主下载地址，如果失败可以使用备用地址
+      return data['downurl'] ?? data['backupdownurl'][0];
+    }
+    throw Exception('获取视频地址失败');
+  }
+
+  // 4. 便捷方法：一次性获取视频播放地址
+  Future<String> getPlayableVideoUrl(int videoId) async {
+    final videoHash = await getVideoHash(videoId);
+    return await getVideoUrl(videoHash!);
   }
 }

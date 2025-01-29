@@ -1,7 +1,6 @@
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import '../models/song.dart';
 import '../models/play_song_info.dart';
 import 'api_service.dart';
 import 'audio_cache_manager.dart';

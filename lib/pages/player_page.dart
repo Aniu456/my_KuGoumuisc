@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
+import '../models/song_mv.dart';
 import '../services/player_service.dart';
 import '../services/api_service.dart';
 import 'package:marquee/marquee.dart';
 import '../utils/image_utils.dart';
+import 'video_player_page.dart';
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key});
@@ -23,9 +25,10 @@ class _PlayerPageState extends State<PlayerPage> {
   final ScrollController _lyricsScrollController = ScrollController();
   String? _currentSongHash;
   bool _isFavorite = false;
-  bool _isCheckingFavorite = false;
+  final bool _isCheckingFavorite = false;
   int _currentPage = 0;
-
+  List<MvInfo>? _mvList;
+  bool _isLoadingMV = false;
   @override
   void initState() {
     super.initState();
@@ -41,7 +44,7 @@ class _PlayerPageState extends State<PlayerPage> {
     if (newHash != null && newHash != _currentSongHash) {
       _currentSongHash = newHash;
       _loadLyricsIfNeeded();
-      _checkFavoriteStatus();
+      _loadMVList();
     }
   }
 
@@ -85,74 +88,43 @@ class _PlayerPageState extends State<PlayerPage> {
     }
   }
 
-  Future<void> _checkFavoriteStatus() async {
-    if (_isCheckingFavorite) return;
-
-    final playerService = context.read<PlayerService>();
-    final currentSong = playerService.currentSongInfo;
-    if (currentSong == null) return;
-
-    setState(() => _isCheckingFavorite = true);
-
-    try {
-      final apiService = context.read<ApiService>();
-      final isFavorite = await apiService.isInFavorite(currentSong.hash);
-      if (mounted) {
-        setState(() {
-          _isFavorite = isFavorite;
-          _isCheckingFavorite = false;
-        });
-      }
-    } catch (e) {
-      print('检查收藏状态失败: $e');
-      if (mounted) {
-        setState(() => _isCheckingFavorite = false);
-      }
-    }
-  }
-
   Future<void> _toggleFavorite() async {
     final apiService = context.read<ApiService>();
     final playerService = context.read<PlayerService>();
     final currentSong = playerService.currentSongInfo;
+    if (currentSong == null) return;
+    // 添加收藏
+    final success = await apiService.addToFavorite(currentSong);
+    if (success && mounted) {
+      setState(() => _isFavorite = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已添加到我喜欢'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 
+// 加载MV列表
+  Future<void> _loadMVList() async {
+    if (_isLoadingMV) return;
+
+    final playerService = context.read<PlayerService>();
+    final currentSong = playerService.currentSongInfo;
     if (currentSong == null) return;
 
+    setState(() => _isLoadingMV = true);
+
     try {
-      if (_isFavorite) {
-        // 取消收藏
-        final success =
-            await apiService.removeFromFavorite(currentSong.mixsongid ?? '');
-        if (success && mounted) {
-          setState(() => _isFavorite = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('已取消收藏'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      } else {
-        // 添加收藏
-        final success = await apiService.addToFavorite(currentSong);
-        if (success && mounted) {
-          setState(() => _isFavorite = true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('已添加到我喜欢'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
+      final apiService = context.read<ApiService>();
+      final mvList = await apiService.getMVList(currentSong.mixsongid!);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isFavorite ? '取消收藏失败' : '收藏失败: $e'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        setState(() => _mvList = mvList);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMV = false);
       }
     }
   }
@@ -911,28 +883,61 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ),
               ),
+              if (_isLoadingMV)
+                const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                  ),
+                )
+              else if (_mvList == null || _mvList!.isEmpty)
+                Center(
+                  child: Text(
+                    '暂无相关MV',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 16,
+                    ),
+                  ),
+                )
+              else
+                // MV列表
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _mvList!.length,
+                    itemBuilder: (context, index) {
+                      final mv = _mvList![index];
+                      return _buildMVItem(
+                          title: mv.mvName +
+                              (mv.remark.isNotEmpty ? ' (${mv.remark})' : ''),
+                          artist: mv.singer,
+                          duration: _formatDuration(
+                              Duration(milliseconds: mv.duration)),
+                          coverUrl: ImageUtils.getThumbnailUrl(mv.thumb),
+                          height: 140.0,
+                          onTap: () async {
+                            try {
+                              final apiService = context.read<ApiService>();
+                              final url = await apiService
+                                  .getPlayableVideoUrl(mv.videoId);
+                              if (!mounted) return;
 
-              // MV列表
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: 3, // 临时数据，后续从API获取
-                  itemBuilder: (context, index) {
-                    return _buildMVItem(
-                      title:
-                          '${currentSongInfo?.title ?? ''} - MV ${index + 1}',
-                      artist: currentSongInfo?.artist ?? '',
-                      duration: '03:45',
-                      coverUrl: currentSongInfo?.cover ?? '',
-                      height: 150.0, // 使用double类型
-                      onTap: () {
-                        // TODO: 播放MV
-                        print('播放MV ${index + 1}');
-                      },
-                    );
-                  },
+                              // 跳转到视频播放页面
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => VideoPlayerPage(
+                                    title: mv.mvName,
+                                    videoUrl: url,
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              print('获取MV播放地址失败: $e');
+                            }
+                          });
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -975,16 +980,16 @@ class _PlayerPageState extends State<PlayerPage> {
                       ImageUtils.createCachedImage(
                         ImageUtils.getThumbnailUrl(coverUrl),
                         width: imageWidth,
+                        height: height,
                         fit: BoxFit.cover,
                       ),
-                      Container(
+                      SizedBox(
                         width: imageWidth,
-                        color: Colors.black.withOpacity(0.2),
                         child: Center(
                           child: Icon(
                             Icons.play_circle_outline,
-                            color: Colors.white,
-                            size: height * 0.4, // 图标大小随容器变化
+                            color: Colors.grey[300],
+                            size: height * 0.3, // 图标大小随容器变化
                           ),
                         ),
                       ),

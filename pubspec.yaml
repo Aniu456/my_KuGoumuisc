@@ -40,6 +40,9 @@ dependencies:
   # 音频播放
   just_audio: ^0.9.36
   just_audio_background: ^0.0.1-beta.11
+  #视频播放
+  video_player: ^2.8.2
+  chewie: ^1.7.4
   # 本地存储
   shared_preferences: ^2.3.5
   path_provider: ^2.1.2
