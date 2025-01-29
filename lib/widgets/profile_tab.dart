@@ -5,11 +5,11 @@ import '../bloc/auth/auth_bloc.dart';
 import '../services/api_service.dart';
 import '../services/audio_cache_manager.dart';
 import '../models/playlist.dart';
+import '../models/user.dart';
 import 'music_list_screen.dart';
 import 'recent_songs_section.dart';
 import '../pages/search_page.dart';
 import '../pages/local_songs_page.dart';
-import '../services/player_service.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -20,6 +20,11 @@ class ProfileTab extends StatefulWidget {
 
 class _ProfileTabState extends State<ProfileTab>
     with AutomaticKeepAliveClientMixin {
+  // 常量定义
+  static const double _borderRadius = 8.0;
+  static const EdgeInsets _contentPadding = EdgeInsets.fromLTRB(10, 6, 10, 0);
+
+  // 状态变量
   List<Playlist> _playlists = [];
   int _playlistCount = 0;
   Playlist _likedPlaylist = Playlist.empty();
@@ -34,19 +39,17 @@ class _ProfileTabState extends State<ProfileTab>
   @override
   void initState() {
     super.initState();
-    _loadLocalSongCount();
-    _loadRecentSongsCount();
+    _initializeData();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = context.read<AuthBloc>().state;
-    // 只在第一次加载时从缓存获取数据
     if (_isFirstLoad && state is AuthAuthenticated) {
       _isFirstLoad = false;
       _loadFromCache();
-      _loadRecentSongsCount(); // 在这里加载最近播放数量
+      _loadRecentSongsCount();
     }
   }
 
@@ -55,33 +58,33 @@ class _ProfileTabState extends State<ProfileTab>
     super.didUpdateWidget(oldWidget);
   }
 
+  // 初始化数据
+  Future<void> _initializeData() async {
+    await Future.wait([
+      _loadLocalSongCount(),
+      _loadRecentSongsCount(),
+    ]);
+  }
+
+  // 加载本地歌曲数量
   Future<void> _loadLocalSongCount() async {
     try {
       final cacheManager = await AudioCacheManager.getInstance();
       final count = await cacheManager.getCachedCount();
-      if (mounted) {
-        setState(() {
-          _localSongCount = count;
-        });
-      }
+      if (mounted) setState(() => _localSongCount = count);
     } catch (e) {
       print('加载本地歌曲数量失败: $e');
     }
   }
 
+  // 加载最近播放数量
   Future<void> _loadRecentSongsCount() async {
     if (!mounted) return;
-    final apiService = context.read<ApiService>();
     try {
+      final apiService = context.read<ApiService>();
       final response = await apiService.getRecentSongs();
-      if (mounted) {
-        setState(() {
-          // 最近播放只显示前20首
-          _recentSongsCount = response.songs.length;
-        });
-      }
+      if (mounted) setState(() => _recentSongsCount = response.songs.length);
     } catch (e) {
-      // 如果获取失败，保持默认值0
       print('获取最近播放数量失败: $e');
     }
   }
@@ -100,37 +103,34 @@ class _ProfileTabState extends State<ProfileTab>
   // 从服务器刷新数据
   Future<void> _refreshFromServer() async {
     try {
-      await _loadLocalSongCount(); // 刷新本地歌曲数量
-      await _loadRecentSongsCount(); // 刷新最近播放数量
+      await Future.wait([
+        _loadLocalSongCount(),
+        _loadRecentSongsCount(),
+      ]);
 
       final apiService = context.read<ApiService>();
-
-      // 1. 获取用户详情和VIP信息
       final userDetail = await apiService.getUserDetail();
       final vipInfo = await apiService.getUserVipDetail();
-
-      // 2. 获取最近播放记录
-      // final recentSongs = await apiService.getRecentSongs(forceRefresh: true);
-
-      // 3. 获取用户歌单
       final response = await apiService.getUserPlaylists(forceRefresh: true);
 
-      // 4. 更新用户状态
       if (mounted) {
         context.read<AuthBloc>().add(AuthUpdateUserInfo(
               userDetail: userDetail,
               vipInfo: vipInfo,
             ));
+        _updatePlaylistsData(response);
       }
-
-      _updatePlaylistsData(response);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刷新数据失败: $e')),
-        );
+        _showErrorSnackBar('刷新数据失败: $e');
       }
     }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   // 更新歌单数据
@@ -158,16 +158,15 @@ class _ProfileTabState extends State<ProfileTab>
     });
   }
 
-  void _handleLoginTap() {
-    Navigator.of(context).pushNamed('/login').then((_) {
-      // 从登录页面返回后，检查是否需要刷新用户信息
-      final state = context.read<AuthBloc>().state;
-      if (state is AuthAuthenticated) {
-        _refreshFromServer();
-      }
-    });
+  // 处理登录点击
+  Future<void> _handleLoginTap() async {
+    final result = await Navigator.of(context).pushNamed('/login');
+    if (result != null && context.read<AuthBloc>().state is AuthAuthenticated) {
+      _refreshFromServer();
+    }
   }
 
+  // 处理登出
   void _handleLogout() {
     if (context.read<AuthBloc>().state is! AuthAuthenticated) {
       _handleLoginTap();
@@ -199,642 +198,360 @@ class _ProfileTabState extends State<ProfileTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        final isAuthenticated = state is AuthAuthenticated;
+        final user = isAuthenticated ? (state).user : null;
 
-    final state = context.watch<AuthBloc>().state;
-    final isAuthenticated = state is AuthAuthenticated;
-    final user = isAuthenticated ? (state).user : null;
+        return Scaffold(
+          body: RefreshIndicator(
+            onRefresh: _refreshFromServer,
+            child: _buildMainContent(isAuthenticated, user),
+          ),
+        );
+      },
+    );
+  }
 
-    return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: _refreshFromServer,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.blue[300]!,
-                Colors.blue[100]!,
+  // 构建主要内容
+  Widget _buildMainContent(bool isAuthenticated, User? user) {
+    return Container(
+      decoration: _buildGradientDecoration(),
+      child: CustomScrollView(
+        slivers: [
+          _buildAppBar(isAuthenticated),
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                _buildUserInfoCard(isAuthenticated, user),
+                _buildFeatureSection(isAuthenticated),
+                if (isAuthenticated) _buildRecentSection(),
+                _buildPlaylistSection(isAuthenticated),
+                const SizedBox(height: 100),
               ],
             ),
           ),
-          child: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                elevation: 0,
-                backgroundColor: Colors.transparent,
-                title: Row(
-                  children: [
-                    const Text(
-                      '我的',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+        ],
+      ),
+    );
+  }
+
+  // 构建渐变背景
+  BoxDecoration _buildGradientDecoration() {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.blue[300]!,
+          Colors.blue[100]!,
+        ],
+      ),
+    );
+  }
+
+  // 构建AppBar
+  Widget _buildAppBar(bool isAuthenticated) {
+    return SliverAppBar(
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+      title: _buildSearchBar(),
+      actions: [
+        if (isAuthenticated)
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _handleLogout,
+          ),
+      ],
+    );
+  }
+
+  // 构建搜索栏
+  Widget _buildSearchBar() {
+    return Row(
+      children: [
+        const Text(
+          '我的',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SearchPage()),
+            ),
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '搜索音乐、歌手、歌词',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 13,
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          print('顶部搜索框被点击');
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const SearchPage(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          height: 36,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.search,
-                                  color: Colors.white, size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                '搜索音乐、歌手、歌词',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                actions: [
-                  if (isAuthenticated)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.logout,
-                        color: Colors.white,
-                      ),
-                      onPressed: _handleLogout,
-                    ),
+                  ),
                 ],
               ),
-              SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    if (state is AuthLoading)
-                      const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(),
-                      ),
-                    // 用户信息卡片
-                    Container(
-                      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Theme.of(context).primaryColor.withOpacity(0.8),
-                            Theme.of(context).primaryColor,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Stack(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(1.5),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.6),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: CircleAvatar(
-                                  radius: 20,
-                                  backgroundColor:
-                                      Colors.white.withOpacity(0.2),
-                                  backgroundImage: user?.pic != null
-                                      ? NetworkImage(user!.pic!)
-                                      : null,
-                                  child: user?.pic == null
-                                      ? const Icon(Icons.person,
-                                          color: Colors.white, size: 24)
-                                      : null,
-                                ),
-                              ),
-                              if (user?.isVipValid ?? false)
-                                // if (true)
-                                Positioned(
-                                  right: -2,
-                                  bottom: -2,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 3, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: Colors.amber[700],
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      'VIP',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 7,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isAuthenticated ? user!.nickname : '立即登录',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                if (isAuthenticated) ...[
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    'ID: ${user!.userId}',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.8),
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          if (isAuthenticated && user!.isVipValid)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.workspace_premium,
-                                    color: Colors.amber,
-                                    size: 10,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${user.vipRemainingDays}天',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
-                    // 功能区域
-                    Container(
-                      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: const Color(0xFFEEEEEE),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildFeatureItem(
-                            icon: Icons.favorite,
-                            label: '我喜欢',
-                            count: _likedPlaylist.count.toString(),
-                            color: Colors.red[400]!,
-                            onTap: () {
-                              final state = context.read<AuthBloc>().state;
-                              if (state is! AuthAuthenticated) {
-                                _handleLoginTap();
-                                return;
-                              }
-                              // 如果有"我喜欢"歌单，导航到歌单页面
-                              if (_likedPlaylist
-                                  .globalCollectionId.isNotEmpty) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => MusicListScreen(
-                                      type: MusicListType.favorite,
-                                      title: '我喜欢',
-                                      playlist: _likedPlaylist,
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                          Container(
-                            width: 0.5,
-                            height: 20,
-                            color: const Color(0xFFEEEEEE),
-                          ),
-                          _buildFeatureItem(
-                            icon: Icons.access_time,
-                            label: '最近',
-                            count: isAuthenticated ? '$_recentSongsCount' : '0',
-                            color: Colors.blue[400]!,
-                            onTap: () {
-                              final state = context.read<AuthBloc>().state;
-                              if (state is! AuthAuthenticated) {
-                                _handleLoginTap();
-                                return;
-                              }
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const MusicListScreen(
-                                    type: MusicListType.recent,
-                                    title: '最近播放',
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          Container(
-                            width: 0.5,
-                            height: 20,
-                            color: const Color(0xFFEEEEEE),
-                          ),
-                          _buildFeatureItem(
-                            icon: Icons.download_outlined,
-                            label: '本地',
-                            count: _localSongCount.toString(),
-                            color: Colors.green[400]!,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const LocalSongsPage(),
-                                ),
-                              ).then((_) => _loadLocalSongCount());
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+  // 构建用户信息卡片
+  Widget _buildUserInfoCard(bool isAuthenticated, User? user) {
+    return Container(
+      margin: _contentPadding,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Theme.of(context).primaryColor.withOpacity(0.8),
+            Theme.of(context).primaryColor,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(_borderRadius),
+      ),
+      child: _buildUserInfo(isAuthenticated, user),
+    );
+  }
 
-                    // 最近播放区域
-                    if (isAuthenticated)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: const Color(0xFFEEEEEE),
-                            width: 0.5,
-                          ),
-                        ),
-                        child: const RecentSongsSection(),
-                      ),
+  // 构建功能区域
+  Widget _buildFeatureSection(bool isAuthenticated) {
+    return Container(
+      margin: _contentPadding,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: _buildCardDecoration(),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildFeatureItem(
+            icon: Icons.favorite,
+            label: '我喜欢',
+            count: _likedPlaylist.count.toString(),
+            color: Colors.red[400]!,
+            onTap: () => _handleFeatureItemTap(FeatureType.favorite),
+          ),
+          _buildDivider(),
+          _buildFeatureItem(
+            icon: Icons.access_time,
+            label: '最近',
+            count: isAuthenticated ? '$_recentSongsCount' : '0',
+            color: Colors.blue[400]!,
+            onTap: () => _handleFeatureItemTap(FeatureType.recent),
+          ),
+          _buildDivider(),
+          _buildFeatureItem(
+            icon: Icons.download_outlined,
+            label: '本地',
+            count: _localSongCount.toString(),
+            color: Colors.green[400]!,
+            onTap: () => _handleFeatureItemTap(FeatureType.local),
+          ),
+        ],
+      ),
+    );
+  }
 
-                    // 我的音乐组
-                    Container(
-                      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: const Color(0xFFEEEEEE),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          // 我的歌单标题
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 2,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).primaryColor,
-                                    borderRadius: BorderRadius.circular(1),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Text(
-                                  '我的歌单',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  isAuthenticated
-                                      ? _playlistCount.toString()
-                                      : '0',
-                                  style: TextStyle(
-                                    color: Colors.grey[500],
-                                    fontSize: 11,
-                                  ),
-                                ),
-                                const Spacer(),
-                                GestureDetector(
-                                  onTap: isAuthenticated
-                                      ? () {
-                                          // TODO: 添加歌单功能
-                                        }
-                                      : () => _handleLoginTap(),
-                                  child: Icon(
-                                    Icons.add,
-                                    size: 16,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // 歌单列表
-                          if (isAuthenticated)
-                            for (var playlist in _playlists)
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    height: 0.5,
-                                    color: const Color(0xFFEEEEEE),
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 8),
-                                  ),
-                                  InkWell(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => MusicListScreen(
-                                            type: MusicListType.playlist,
-                                            title: playlist.name,
-                                            playlist: playlist,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        child: SizedBox(
-                                          height: 50,
-                                          child: Row(
-                                            children: [
-                                              // 封面图片
-                                              Container(
-                                                width: 40,
-                                                height: 40,
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                  color: Colors.grey[100],
-                                                ),
-                                                clipBehavior: Clip.antiAlias,
-                                                child: playlist.pic.isNotEmpty
-                                                    ? Image.network(
-                                                        ImageUtils
-                                                            .getThumbnailUrl(
-                                                                playlist.pic),
-                                                        fit: BoxFit.cover,
-                                                        errorBuilder: (context,
-                                                            error, stackTrace) {
-                                                          return Icon(
-                                                            Icons.music_note,
-                                                            color: Colors
-                                                                .grey[400],
-                                                            size: 20,
-                                                          );
-                                                        },
-                                                      )
-                                                    : Icon(
-                                                        Icons.music_note,
-                                                        color: Colors.grey[400],
-                                                        size: 20,
-                                                      ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              // 标题和副标题
-                                              Expanded(
-                                                child: Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceAround,
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      playlist.name,
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                    Text(
-                                                      '${playlist.count}首',
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: Colors.grey[600],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        )),
-                                  ),
-                                ],
-                              ),
-                          // 已购音乐部分
-                          Container(
-                            height: 0.5,
-                            color: const Color(0xFFEEEEEE),
-                            margin: const EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                          // 已购音乐标题
-                          InkWell(
-                            onTap: () {
-                              setState(() {
-                                _isPurchasedExpanded = !_isPurchasedExpanded;
-                              });
-                            },
-                            child: SizedBox(
-                              height: 40,
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                child: Row(
-                                  children: [
-                                    const Text(
-                                      '已购音乐',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Icon(
-                                      _isPurchasedExpanded
-                                          ? Icons.keyboard_arrow_up
-                                          : Icons.keyboard_arrow_down,
-                                      size: 16,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          // 已购音乐列表项
-                          if (_isPurchasedExpanded) ...[
-                            SizedBox(
-                              height: 46,
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: Colors.purple[50],
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Icon(Icons.album,
-                                          color: Colors.purple[400], size: 18),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            '数字专辑',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 1),
-                                          Text(
-                                            '0张',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey[600],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            Container(
-                              height: 0.5,
-                              color: const Color(0xFFEEEEEE),
-                              margin: const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                            SizedBox(
-                              height: 46,
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: Colors.green[50],
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Icon(Icons.music_note,
-                                          color: Colors.green[400], size: 18),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            '付费单曲',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 1),
-                                          Text(
-                                            '0首',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey[600],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 100),
-                  ],
+  // 构建分隔线
+  Widget _buildDivider() {
+    return Container(
+      width: 0.5,
+      height: 20,
+      color: const Color(0xFFEEEEEE),
+    );
+  }
+
+  // 构建卡片装饰
+  BoxDecoration _buildCardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(_borderRadius),
+      border: Border.all(
+        color: const Color(0xFFEEEEEE),
+        width: 0.5,
+      ),
+    );
+  }
+
+  // 处理功能项点击
+  void _handleFeatureItemTap(FeatureType type) {
+    switch (type) {
+      case FeatureType.favorite:
+        _handleFavoritesTap();
+        break;
+      case FeatureType.recent:
+        _handleRecentTap();
+        break;
+      case FeatureType.local:
+        _handleLocalTap();
+        break;
+    }
+  }
+
+  void _handleFavoritesTap() {
+    final state = context.read<AuthBloc>().state;
+    if (state is! AuthAuthenticated) {
+      _handleLoginTap();
+      return;
+    }
+    if (_likedPlaylist.globalCollectionId.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MusicListScreen(
+            type: MusicListType.favorite,
+            title: '我喜欢',
+            playlist: _likedPlaylist,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _handleRecentTap() {
+    final state = context.read<AuthBloc>().state;
+    if (state is! AuthAuthenticated) {
+      _handleLoginTap();
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const MusicListScreen(
+          type: MusicListType.recent,
+          title: '最近播放',
+        ),
+      ),
+    );
+  }
+
+  void _handleLocalTap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LocalSongsPage(),
+      ),
+    ).then((_) => _loadLocalSongCount());
+  }
+
+  Widget _buildUserInfo(bool isAuthenticated, User? user) {
+    return Row(
+      children: [
+        Stack(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.6),
+                  width: 1,
                 ),
               ),
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.white.withOpacity(0.2),
+                backgroundImage:
+                    user?.pic != null ? NetworkImage(user!.pic!) : null,
+                child: user?.pic == null
+                    ? const Icon(Icons.person, color: Colors.white, size: 24)
+                    : null,
+              ),
+            ),
+            if (user?.isVipValid ?? false)
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[700],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'VIP',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 7,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isAuthenticated ? user!.nickname : '立即登录',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              if (isAuthenticated) ...[
+                const SizedBox(height: 1),
+                Text(
+                  'ID: ${user!.userId}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-      ),
+        if (isAuthenticated && user!.isVipValid)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.workspace_premium,
+                  color: Colors.amber,
+                  size: 10,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  '${user.vipRemainingDays}天',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -886,6 +603,313 @@ class _ProfileTabState extends State<ProfileTab>
       ),
     );
   }
+
+  Widget _buildRecentSection() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFEEEEEE),
+          width: 0.5,
+        ),
+      ),
+      child: const RecentSongsSection(),
+    );
+  }
+
+  Widget _buildPlaylistSection(bool isAuthenticated) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFEEEEEE),
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 2,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  '我的歌单',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  isAuthenticated ? _playlistCount.toString() : '0',
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 11,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: isAuthenticated
+                      ? () {
+                          // TODO: 添加歌单功能
+                        }
+                      : () => _handleLoginTap(),
+                  child: Icon(
+                    Icons.add,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isAuthenticated)
+            for (var playlist in _playlists)
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 0.5,
+                    color: const Color(0xFFEEEEEE),
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MusicListScreen(
+                            type: MusicListType.playlist,
+                            title: playlist.name,
+                            playlist: playlist,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        child: SizedBox(
+                          height: 50,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(4),
+                                  color: Colors.grey[100],
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: playlist.pic.isNotEmpty
+                                    ? Image.network(
+                                        ImageUtils.getThumbnailUrl(
+                                            playlist.pic),
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                          return Icon(
+                                            Icons.music_note,
+                                            color: Colors.grey[400],
+                                            size: 20,
+                                          );
+                                        },
+                                      )
+                                    : Icon(
+                                        Icons.music_note,
+                                        color: Colors.grey[400],
+                                        size: 20,
+                                      ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      playlist.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${playlist.count}首',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )),
+                  ),
+                ],
+              ),
+          Container(
+            height: 0.5,
+            color: const Color(0xFFEEEEEE),
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isPurchasedExpanded = !_isPurchasedExpanded;
+              });
+            },
+            child: SizedBox(
+              height: 40,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    const Text(
+                      '已购音乐',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      _isPurchasedExpanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      size: 16,
+                      color: Colors.grey[600],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (_isPurchasedExpanded) ...[
+            SizedBox(
+              height: 46,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.purple[50],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(Icons.album,
+                          color: Colors.purple[400], size: 18),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '数字专辑',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            '0张',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              height: 0.5,
+              color: const Color(0xFFEEEEEE),
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            SizedBox(
+              height: 46,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(Icons.music_note,
+                          color: Colors.green[400], size: 18),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '付费单曲',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            '0首',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// 功能类型枚举
+enum FeatureType {
+  favorite,
+  recent,
+  local,
 }
 
 class _CategoryTab extends StatelessWidget {

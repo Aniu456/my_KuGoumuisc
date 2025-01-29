@@ -24,6 +24,7 @@ class _PlayerPageState extends State<PlayerPage> {
   String? _currentSongHash;
   bool _isFavorite = false;
   bool _isCheckingFavorite = false;
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -303,17 +304,45 @@ class _PlayerPageState extends State<PlayerPage> {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() {
-            _showLyrics = index == 1;
-          });
-        },
+      body: Stack(
         children: [
-          _buildPlayerPage(context, playerService, currentSongInfo, screenWidth,
-              screenHeight),
-          _buildLyricsPage(context, currentSongInfo),
+          PageView(
+            controller: _pageController,
+            physics: const BouncingScrollPhysics(),
+            onPageChanged: (index) {
+              setState(() {
+                _showLyrics = index == 1;
+                _currentPage = index;
+              });
+            },
+            children: [
+              _buildPlayerPage(context, playerService, currentSongInfo,
+                  screenWidth, screenHeight),
+              _buildLyricsPage(context, currentSongInfo),
+              _buildRelatedPage(context, currentSongInfo),
+            ],
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                  3,
+                  (index) => Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _currentPage == index
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.4),
+                        ),
+                      )),
+            ),
+          ),
         ],
       ),
     );
@@ -833,6 +862,178 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRelatedPage(BuildContext context, currentSongInfo) {
+    return Stack(
+      children: [
+        // 背景模糊效果
+        if (currentSongInfo?.cover != null) ...[
+          Positioned.fill(
+            child: ClipRect(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ImageUtils.createCachedImage(
+                      ImageUtils.getLargeUrl(currentSongInfo!.cover),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                      child: Container(
+                        color: Colors.black.withOpacity(0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+
+        // MV内容
+        SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // MV标题
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '歌曲相关MV',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+
+              // MV列表
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: 3, // 临时数据，后续从API获取
+                  itemBuilder: (context, index) {
+                    return _buildMVItem(
+                      title:
+                          '${currentSongInfo?.title ?? ''} - MV ${index + 1}',
+                      artist: currentSongInfo?.artist ?? '',
+                      duration: '03:45',
+                      coverUrl: currentSongInfo?.cover ?? '',
+                      height: 150.0, // 使用double类型
+                      onTap: () {
+                        // TODO: 播放MV
+                        print('播放MV ${index + 1}');
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMVItem({
+    required String title,
+    required String artist,
+    required String duration,
+    required String coverUrl,
+    required VoidCallback onTap,
+    required double height, // 改为double类型
+  }) {
+    // 计算合适的缩略图尺寸
+    final double imageWidth = height * 4 / 3; // 保持16:9的宽高比
+
+    return Container(
+      height: height,
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                // MV封面
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    children: [
+                      ImageUtils.createCachedImage(
+                        ImageUtils.getThumbnailUrl(coverUrl),
+                        width: imageWidth,
+                        fit: BoxFit.cover,
+                      ),
+                      Container(
+                        width: imageWidth,
+                        color: Colors.black.withOpacity(0.2),
+                        child: Center(
+                          child: Icon(
+                            Icons.play_circle_outline,
+                            color: Colors.white,
+                            size: height * 0.4, // 图标大小随容器变化
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // MV信息
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: height * 0.13, // 字体大小随容器高度变化
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: height * 0.04), // 间距也随高度变化
+                      Text(
+                        artist,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: height * 0.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: height * 0.04),
+                      Text(
+                        duration,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.5),
+                          fontSize: height * 0.12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
