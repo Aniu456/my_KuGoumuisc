@@ -28,10 +28,10 @@ class _ProfileTabState extends State<ProfileTab>
   List<Playlist> _playlists = [];
   int _playlistCount = 0;
   Playlist _likedPlaylist = Playlist.empty();
-  bool _isFirstLoad = true;
   bool _isPurchasedExpanded = false;
   int _localSongCount = 0;
   int _recentSongsCount = 0;
+  bool _isLoading = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -39,18 +39,37 @@ class _ProfileTabState extends State<ProfileTab>
   @override
   void initState() {
     super.initState();
-    _initializeData();
+
+    // 监听 AuthBloc 状态变化
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authBloc = context.read<AuthBloc>();
+      // 检查初始状态
+      if (authBloc.state is AuthAuthenticated) {
+        _loadData(); // 只在初始化时加载一次
+      }
+
+      // 添加状态监听
+      authBloc.stream.listen((state) {
+        if (state is AuthAuthenticated) {
+          if (_playlists.isEmpty) {
+            _loadData(); // 只在歌单为空时加载数据
+          }
+        } else if (state is AuthUnauthenticated) {
+          // 清除数据
+          setState(() {
+            _playlists = [];
+            _playlistCount = 0;
+            _likedPlaylist = Playlist.empty();
+            _recentSongsCount = 0;
+          });
+        }
+      });
+    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final state = context.read<AuthBloc>().state;
-    if (_isFirstLoad && state is AuthAuthenticated) {
-      _isFirstLoad = false;
-      _loadFromCache();
-      _loadRecentSongsCount();
-    }
   }
 
   @override
@@ -58,12 +77,58 @@ class _ProfileTabState extends State<ProfileTab>
     super.didUpdateWidget(oldWidget);
   }
 
-  // 初始化数据
-  Future<void> _initializeData() async {
-    await Future.wait([
-      _loadLocalSongCount(),
-      _loadRecentSongsCount(),
-    ]);
+  // 统一的数据加载方法
+  Future<void> _loadData() async {
+    if (_isLoading) return; // 防止重复加载
+
+    setState(() => _isLoading = true);
+    try {
+      await Future.wait([
+        _loadLocalSongCount(),
+        _loadUserData(),
+      ]);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // 加载用户相关数据
+  Future<void> _loadUserData() async {
+    if (!mounted) return;
+    try {
+      final apiService = context.read<ApiService>();
+      final userDetail = await apiService.getUserDetail();
+      final vipInfo = await apiService.getUserVipDetail();
+      final playlists = await apiService.getUserPlaylists(forceRefresh: true);
+      final recentSongs = await apiService.getRecentSongs();
+
+      if (mounted) {
+        // 更新用户信息
+        context.read<AuthBloc>().add(AuthUpdateUserInfo(
+              userDetail: userDetail,
+              vipInfo: vipInfo,
+            ));
+
+        // 更新歌单数据
+        _updatePlaylistsData(playlists);
+
+        // 更新最近播放数量
+        setState(() {
+          _recentSongsCount = recentSongs.songs.length;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('加载数据失败: $e');
+      }
+    }
+  }
+
+  // 刷新数据（用于下拉刷新）
+  Future<void> _refreshFromServer() async {
+    return _loadData();
   }
 
   // 加载本地歌曲数量
@@ -74,56 +139,6 @@ class _ProfileTabState extends State<ProfileTab>
       if (mounted) setState(() => _localSongCount = count);
     } catch (e) {
       print('加载本地歌曲数量失败: $e');
-    }
-  }
-
-  // 加载最近播放数量
-  Future<void> _loadRecentSongsCount() async {
-    if (!mounted) return;
-    try {
-      final apiService = context.read<ApiService>();
-      final response = await apiService.getRecentSongs();
-      if (mounted) setState(() => _recentSongsCount = response.songs.length);
-    } catch (e) {
-      print('获取最近播放数量失败: $e');
-    }
-  }
-
-  // 从缓存加载数据
-  Future<void> _loadFromCache() async {
-    try {
-      final apiService = context.read<ApiService>();
-      final response = await apiService.getUserPlaylists();
-      _updatePlaylistsData(response);
-    } catch (e) {
-      print('从缓存加载数据失败: $e');
-    }
-  }
-
-  // 从服务器刷新数据
-  Future<void> _refreshFromServer() async {
-    try {
-      await Future.wait([
-        _loadLocalSongCount(),
-        _loadRecentSongsCount(),
-      ]);
-
-      final apiService = context.read<ApiService>();
-      final userDetail = await apiService.getUserDetail();
-      final vipInfo = await apiService.getUserVipDetail();
-      final response = await apiService.getUserPlaylists(forceRefresh: true);
-
-      if (mounted) {
-        context.read<AuthBloc>().add(AuthUpdateUserInfo(
-              userDetail: userDetail,
-              vipInfo: vipInfo,
-            ));
-        _updatePlaylistsData(response);
-      }
-    } catch (e) {
-      if (mounted) {
-        _showErrorSnackBar('刷新数据失败: $e');
-      }
     }
   }
 
@@ -158,11 +173,11 @@ class _ProfileTabState extends State<ProfileTab>
     });
   }
 
-  // 处理登录点击
+  // 修改登录回调
   Future<void> _handleLoginTap() async {
     final result = await Navigator.of(context).pushNamed('/login');
     if (result != null && context.read<AuthBloc>().state is AuthAuthenticated) {
-      _refreshFromServer();
+      await _refreshFromServer(); // 只在登录成功时刷新服务器数据
     }
   }
 

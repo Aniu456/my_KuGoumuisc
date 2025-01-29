@@ -237,34 +237,16 @@ class _MusicListScreenState extends State<MusicListScreen>
     );
   }
 
-  // 显示歌曲菜单
-  void _showSongMenu(Song song) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => _SongMenuSheet(
-        song: song,
-        onPlayTap: () {
-          Navigator.pop(context);
-          _playSong(song);
-        },
-      ),
-    );
-  }
-
   // 播放歌曲
   Future<void> _playSong(Song song) async {
     try {
       final playerService = context.read<PlayerService>();
       final songIndex = _songs.indexOf(song);
 
-      if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const PlayerPage()),
-      );
-
+      // 1. 准备播放列表和歌曲
       final playlist = _songs.map((s) => PlaySongInfo.fromSong(s)).toList();
       playerService.preparePlaylist(playlist, songIndex);
+      // 2. 开始播放
       await playerService.play(playlist[songIndex]);
     } catch (e) {
       _showError('播放失败: $e');
@@ -951,13 +933,10 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
         cover: song.cover,
       );
 
+      // 1. 先关闭搜索页面
       close(context, null);
 
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const PlayerPage()),
-      );
-
+      // 2. 准备播放
       await playerService.play(songInfo);
     } catch (e) {
       if (context.mounted) {

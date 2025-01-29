@@ -268,20 +268,18 @@ class ApiService {
   Future<Map<String, dynamic>> getUserPlaylists(
       {bool forceRefresh = false}) async {
     try {
-      print('获取用户歌单 - forceRefresh: $forceRefresh');
       // 尝试从缓存获取
       if (!forceRefresh) {
         final cachedData = _getValidCache(_playlistsCacheKey);
         if (cachedData != null) {
-          print('使用缓存的歌单数据: $cachedData');
           // 在后台刷新缓存
           Future.delayed(Duration.zero, () async {
             try {
               final response = await _dio.get('/user/playlist');
-              print('后台刷新获取的数据: ${response.data}');
+              print('后台刷新歌单缓存响应: ${response.data}');
               if (response.data['status'] == 1) {
                 final cacheData = {
-                  'data': response.data,
+                  'data': response.data['data'],
                   'timestamp': DateTime.now().millisecondsSinceEpoch,
                 };
                 await _updateCache(_playlistsCacheKey, cacheData);
@@ -292,35 +290,49 @@ class ApiService {
           });
           return {
             'info': cachedData['data']['info'] as List,
-            'list_count': cachedData['data']['list_count'],
+            'list_count': cachedData['data']['info'].length,
           };
         }
       }
 
       // 从服务器获取新数据
-      print('正在从服务器获取新数据...');
       final response = await _dio.get('/user/playlist');
-      print('服务器返回数据: ${response.data}');
+      print('获取用户歌单响应: ${response.data}');
+
       if (response.data['status'] == 1) {
+        final responseData = response.data['data'];
         final cacheData = {
-          'data': response.data,
+          'data': responseData,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         };
         await _updateCache(_playlistsCacheKey, cacheData);
         return {
-          'info': response.data['data']['info'] as List,
-          'list_count': response.data['data']['list_count'],
+          'info': responseData['info'] as List,
+          'list_count': responseData['info'].length,
         };
+      } else {
+        // 处理错误状态
+        final errorCode = response.data['error_code'];
+        final errorMsg = response.data['error_msg'] ?? '未知错误';
+        print('获取歌单失败 - 错误码: $errorCode, 错误信息: $errorMsg');
+
+        // 如果是token过期或未登录错误，清除认证数据
+        if (errorCode == 20017) {
+          print('Token已过期或未登录，清除认证数据');
+          _clearAuthData();
+        }
+
+        throw Exception('获取歌单失败: $errorMsg (错误码: $errorCode)');
       }
-      throw Exception(response.data['data'] ?? '获取用户歌单失败');
     } catch (e) {
+      print('获取歌单异常: $e');
       // 如果请求失败但有缓存，返回缓存
       final cachedData = _getValidCache(_playlistsCacheKey);
       if (cachedData != null) {
-        print('请求失败，使用缓存数据: $cachedData');
+        print('使用缓存的歌单数据');
         return {
           'info': cachedData['data']['info'] as List,
-          'list_count': cachedData['data']['list_count'],
+          'list_count': cachedData['data']['info'].length,
         };
       }
       rethrow;
