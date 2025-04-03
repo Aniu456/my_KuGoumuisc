@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/auth/auth_bloc.dart';
 import '../screens/home_screen.dart';
-import '../screens/player_screen.dart';
+import '../pages/player_page.dart';
 import '../screens/login_screen.dart';
 import '../screens/phone_login_screen.dart';
 import '../screens/account_login_screen.dart';
@@ -39,7 +39,7 @@ final router = GoRouter(
     GoRoute(
       path: '/player',
       builder: (BuildContext context, GoRouterState state) {
-        return const PlayerScreen();
+        return const PlayerPage();
       },
     ),
   ],

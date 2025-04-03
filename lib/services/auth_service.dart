@@ -67,16 +67,31 @@ class AuthService {
 
       final userJson = _prefs.getString(_userKey);
       if (userJson != null) {
-        _currentUser = User.fromJson(
-          Map<String, dynamic>.from(
-            jsonDecode(userJson),
-          ),
-        );
+        print('从缓存加载用户信息: $userJson');
+        final Map<String, dynamic> userData = jsonDecode(userJson);
+
+        // 确保 extraInfo 中的 VIP 信息正确
+        if (userData['extraInfo'] != null) {
+          final extraInfo = userData['extraInfo'] as Map<String, dynamic>;
+          if (extraInfo['vipInfo'] != null) {
+            final vipInfo = extraInfo['vipInfo'] as Map<String, dynamic>;
+            print('缓存的VIP信息: $vipInfo');
+          }
+        }
+
+        _currentUser = User.fromJson(userData);
+        print(
+            '用户VIP状态: isVip=${_currentUser!.isVip}, isVipValid=${_currentUser!.isVipValid}');
+        print(
+            'VIP时间: begin=${_currentUser!.vipBeginTime}, end=${_currentUser!.vipEndTime}');
+
         _authStateController.add(AuthState.authenticated);
       } else {
+        print('未找到缓存的用户信息');
         _authStateController.add(AuthState.unauthenticated);
       }
     } catch (e) {
+      print('加载缓存的认证信息失败: $e');
       _authStateController.add(AuthState.unauthenticated);
     }
   }
@@ -115,6 +130,7 @@ class AuthService {
       throw Exception(response['error_msg'] ?? '登录失败');
     }
 
+    print('处理登录响应: $response');
     final data = response['data'] as Map<String, dynamic>;
     final token = data['token'] as String?;
     final userId = data['userid']?.toString();
@@ -123,14 +139,34 @@ class AuthService {
       throw Exception('Invalid response format');
     }
 
+    _token = token;
     _userId = userId;
+    await _prefs.setString(_tokenKey, token);
     await _prefs.setString(_userIdKey, userId);
 
-    final isVip = data['su_vip_begin_time'] != null &&
-        data['su_vip_end_time'] != null &&
-        DateTime.now().isAfter(DateTime.parse(data['su_vip_begin_time'])) &&
-        DateTime.now().isBefore(DateTime.parse(data['su_vip_end_time']));
+    // 确定VIP状态
+    bool isVip = false;
+    if (data['vip_begin_time'] != null && data['vip_end_time'] != null) {
+      try {
+        final now = DateTime.now();
+        final begin = DateTime.parse(data['vip_begin_time']);
+        final end = DateTime.parse(data['vip_end_time']);
+        isVip = now.isAfter(begin) && now.isBefore(end);
+      } catch (e) {
+        print('解析VIP时间错误: $e');
+      }
+    } else if (data['is_vip'] == 1 || data['is_vip'] == true) {
+      isVip = true;
+    }
 
+    // 构建完整的VIP信息
+    final vipInfo = {
+      'isVip': isVip,
+      'beginTime': data['su_vip_begin_time'] ?? data['vip_begin_time'],
+      'endTime': data['su_vip_end_time'] ?? data['vip_end_time'],
+    };
+
+    // 创建用户对象
     final user = User(
       userId: userId,
       nickname: data['nickname'] ?? data['username'] ?? userId,
@@ -138,19 +174,21 @@ class AuthService {
       isVip: isVip,
       token: token,
       serverTime: DateTime.now(),
-      vipBeginTime: data['su_vip_begin_time'] as String?,
-      vipEndTime: data['su_vip_end_time'] as String?,
+      vipBeginTime: data['su_vip_begin_time'] as String? ??
+          data['vip_begin_time'] as String?,
+      vipEndTime:
+          data['su_vip_end_time'] as String? ?? data['vip_end_time'] as String?,
       extraInfo: {
         'userDetail': data,
-        'vipInfo': {
-          'isVip': isVip,
-          'beginTime': data['su_vip_begin_time'],
-          'endTime': data['su_vip_end_time'],
-        },
+        'vipInfo': vipInfo,
       },
     );
 
+    // 重要：设置当前用户
+    _currentUser = user;
+
     await persistAuth(user, token);
+    print('登录成功，用户信息已设置: ${user.toJson()}');
     _authStateController.add(AuthState.authenticated);
   }
 
@@ -176,11 +214,23 @@ class AuthService {
   /// @param user 用户实例
   /// @param token 认证token
   Future<void> persistAuth(User user, String token) async {
-    _currentUser = user;
-    _token = token;
-
+    // 先保存数据
     await _prefs.setString(_tokenKey, token);
-    await _prefs.setString(_userKey, jsonEncode(user.toJson()));
+    await _prefs.setString(_userIdKey, user.userId);
+
+    // 确保缓存完整的用户信息，包括VIP状态
+    final userJson = user.toJson();
+    if (user.extraInfo != null) {
+      userJson['extraInfo'] = user.extraInfo;
+    }
+    await _prefs.setString(_userKey, jsonEncode(userJson));
+
+    // 确保设置内存中的用户信息
+    _token = token;
+    _userId = user.userId;
+    _currentUser = user;
+
+    print('认证信息已持久化: token=$token, userId=${user.userId}，用户信息已缓存');
   }
 
   /// 清除本地存储的认证信息

@@ -60,17 +60,52 @@ class User {
   /// @param json 包含用户数据的Map对象
   /// @return 返回User实例
   factory User.fromJson(Map<String, dynamic> json) {
+    // 从 extraInfo 中获取 VIP 信息
+    final extraInfo = json['extraInfo'] as Map<String, dynamic>?;
+    final vipInfo = extraInfo?['vipInfo'] as Map<String, dynamic>?;
+
+    // 获取VIP时间信息
+    final vipBeginTime = vipInfo?['beginTime'] as String? ??
+        json['vip_begin_time'] as String? ??
+        json['su_vip_begin_time'] as String?;
+
+    final vipEndTime = vipInfo?['endTime'] as String? ??
+        json['vip_end_time'] as String? ??
+        json['su_vip_end_time'] as String?;
+
+    // 验证VIP状态
+    bool isVip = false;
+    if (vipBeginTime != null && vipEndTime != null) {
+      try {
+        final now = DateTime.now();
+        final begin = DateTime.parse(vipBeginTime);
+        final end = DateTime.parse(vipEndTime);
+        isVip = now.isAfter(begin) && now.isBefore(end);
+      } catch (e) {
+        print('解析VIP时间出错: $e');
+        isVip = false;
+      }
+    }
+
+    // 如果时间验证失败，再尝试其他字段
+    if (!isVip) {
+      isVip = vipInfo?['isVip'] == true ||
+          vipInfo?['isVip'] == 1 ||
+          json['is_vip'] == 1 ||
+          json['is_vip'] == true;
+    }
+
     return User(
       userId: json['userid'] as String,
       nickname: json['nickname'] as String,
       pic: json['pic'] as String?,
-      isVip: json['is_vip'] == 1,
+      isVip: isVip,
       vipToken: json['vip_token'] as String?,
-      vipBeginTime: json['vip_begin_time'] as String?,
-      vipEndTime: json['vip_end_time'] as String?,
+      vipBeginTime: vipBeginTime,
+      vipEndTime: vipEndTime,
       token: json['token'] as String,
       serverTime: DateTime.parse(json['servertime'] as String),
-      extraInfo: json['extraInfo'] as Map<String, dynamic>?,
+      extraInfo: extraInfo,
     );
   }
 
@@ -123,10 +158,30 @@ class User {
     if (!isVip) return false;
     if (vipBeginTime == null || vipEndTime == null) return false;
 
-    final now = DateTime.now();
-    final begin = DateTime.parse(vipBeginTime!);
-    final end = DateTime.parse(vipEndTime!);
+    try {
+      final now = DateTime.now();
+      final begin = DateTime.parse(vipBeginTime!);
+      final end = DateTime.parse(vipEndTime!);
 
-    return now.isAfter(begin) && now.isBefore(end);
+      // 检查VIP是否在有效期内
+      final isValid = now.isAfter(begin) && now.isBefore(end);
+
+      return isValid;
+    } catch (e) {
+      print('验证VIP状态时出错: $e');
+      return false;
+    }
+  }
+
+  /// 获取VIP剩余天数
+  int? get vipRemainingDays {
+    if (!isVipValid || vipEndTime == null) return null;
+    try {
+      final now = DateTime.now();
+      final end = DateTime.parse(vipEndTime!);
+      return end.difference(now).inDays;
+    } catch (e) {
+      return null;
+    }
   }
 }

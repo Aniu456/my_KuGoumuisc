@@ -7,6 +7,8 @@ class Song {
   final String cover;
   final String singerName;
   final String albumImage;
+  final String? mixsongid;
+  final int? duration; // 歌曲时长（秒）
 
   // 从name中解析出歌手和歌曲名
   String get title => name.split(' - ').last;
@@ -21,6 +23,8 @@ class Song {
     required this.cover,
     required this.singerName,
     required this.albumImage,
+    this.mixsongid,
+    this.duration,
   });
 
   factory Song.fromJson(Map<String, dynamic> json) {
@@ -35,6 +39,10 @@ class Song {
       cover: json['cover']?.toString() ?? '',
       singerName: json['singername'] ?? json['singer_name'] ?? '',
       albumImage: json['album_img'] ?? json['album_image'] ?? '',
+      mixsongid: json['mixsongid']?.toString(),
+      duration: json['duration'] is int
+          ? json['duration']
+          : int.tryParse(json['duration']?.toString() ?? '0'),
     );
   }
 
@@ -48,6 +56,8 @@ class Song {
       'cover': cover,
       'singer_name': singerName,
       'album_image': albumImage,
+      'mixsongid': mixsongid,
+      'duration': duration,
     };
   }
 }

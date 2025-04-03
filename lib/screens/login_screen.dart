@@ -49,7 +49,8 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
-    final phoneRegExp = RegExp(r'^1[3-9]\d{9}$');
+    // 更新手机号正则表达式，支持所有11位手机号
+    final phoneRegExp = RegExp(r'^1\d{10}$');
     if (!phoneRegExp.hasMatch(_phoneController.text)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请输入有效的手机号')),
@@ -57,6 +58,7 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
+    print('正在尝试登录，手机号: ${_phoneController.text}');
     context.read<AuthBloc>().add(
           AuthPhoneLoginRequested(
             _phoneController.text,
@@ -89,8 +91,8 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
-    // 简单的手机号验证
-    final phoneRegExp = RegExp(r'^1[3-9]\d{9}$');
+    // 更新手机号验证正则表达式，支持所有11位手机号
+    final phoneRegExp = RegExp(r'^1\d{10}$');
     if (!phoneRegExp.hasMatch(_phoneController.text)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请输入有效的手机号')),
@@ -100,6 +102,7 @@ class _LoginScreenState extends State<LoginScreen>
 
     try {
       setState(() => _isLoading = true);
+      print('正在发送验证码，手机号: ${_phoneController.text}');
       final apiService = context.read<ApiService>();
       final success =
           await apiService.sendVerificationCode(_phoneController.text);
@@ -114,6 +117,7 @@ class _LoginScreenState extends State<LoginScreen>
       }
     } catch (e) {
       setState(() => _isLoading = false);
+      print('发送验证码失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('发送验证码失败: ${e.toString()}')),
@@ -144,6 +148,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
+        print('收到新的认证状态: $state');
         if (state is AuthLoading) {
           setState(() => _isLoading = true);
         } else {
@@ -162,6 +167,8 @@ class _LoginScreenState extends State<LoginScreen>
         if (state is AuthAuthenticated) {
           // 使用 mounted 检查确保 widget 仍然在树中
           if (!mounted) return;
+
+          print('登录成功处理：用户名: ${state.user.nickname}');
 
           // 确保在主线程中执行导航
           Future.microtask(() {

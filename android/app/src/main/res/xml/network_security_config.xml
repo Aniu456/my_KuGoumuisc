@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">8.148.7.143</domain>
+        <domain includeSubdomains="true">kugou.com</domain>
+        <domain includeSubdomains="true">fsandroid.tx.kugou.com</domain>
+        <domain includeSubdomains="true">fsmobile.kugou.com</domain>
+    </domain-config>
+</network-security-config> 

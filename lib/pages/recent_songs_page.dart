@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/recent_song.dart';
 import '../services/api_service.dart';
-import '../services/player_service.dart';
-import '../utils/image_utils.dart';
 import '../models/song.dart';
-import '../pages/player_page.dart';
 import '../widgets/song_list_item.dart';
 
 class RecentSongsPage extends StatefulWidget {
@@ -66,7 +63,7 @@ class _RecentSongsPageState extends State<RecentSongsPage> {
                     final recentSong = _recentSongs[index];
                     final song = Song(
                       hash: recentSong.hash,
-                      name: '${recentSong.singername} - ${recentSong.songname}',
+                      name: '${recentSong.singername} - ${recentSong.name}',
                       cover: recentSong.cover,
                       albumId: '',
                       audioId: '',

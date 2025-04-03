@@ -159,6 +159,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
+      print('处理手机号登录请求: ${event.phone}');
       // 发射加载状态,表示正在登录中
       emit(AuthLoading());
 
@@ -167,17 +168,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
       // 获取登录后的用户信息
       final user = _authService.currentUser;
+      print('登录后获取到的用户信息: ${user?.toJson()}');
 
       // 判断用户信息是否存在
       if (user != null) {
         // 用户存在,发射认证成功状态
+        print('手机号登录成功，发射AuthAuthenticated状态');
         emit(AuthAuthenticated(user));
       } else {
         // 用户不存在,发射失败状态
+        print('手机号登录失败，用户为空');
         emit(AuthFailure('登录失败'));
       }
     } catch (e) {
       // 捕获异常,发射失败状态并携带错误信息
+      print('手机号登录异常: $e');
       emit(AuthFailure(e.toString()));
     }
   }
@@ -212,13 +217,30 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     if (state is AuthAuthenticated) {
       final currentUser = (state as AuthAuthenticated).user;
+
+      // 从VIP信息中提取VIP状态
+      final vipInfo = event.vipInfo;
+      final isVip = vipInfo['is_vip'] == 1 || vipInfo['is_vip'] == true;
+      final vipBeginTime = vipInfo['vip_begin_time'] as String?;
+      final vipEndTime = vipInfo['vip_end_time'] as String?;
+
+      // 从用户详情中提取基本信息
+      final userDetail = event.userDetail['data'] ?? event.userDetail;
+
+      // 创建更新后的用户对象
       final updatedUser = currentUser.copyWith(
+        nickname: userDetail['nickname'] ?? currentUser.nickname,
+        pic: userDetail['pic'] ?? currentUser.pic,
+        isVip: isVip,
+        vipBeginTime: vipBeginTime ?? currentUser.vipBeginTime,
+        vipEndTime: vipEndTime ?? currentUser.vipEndTime,
         extraInfo: {
           ...?currentUser.extraInfo,
-          'userDetail': event.userDetail['data'] ?? event.userDetail,
-          'vipInfo': event.vipInfo['data'] ?? event.vipInfo,
+          'userDetail': userDetail,
+          'vipInfo': vipInfo,
         },
       );
+
       emit(AuthAuthenticated(updatedUser));
     }
   }

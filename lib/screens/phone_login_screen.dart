@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../core/responsive.dart';
 import '../core/theme.dart';
 import '../core/routes.dart';
+import '../bloc/auth/auth_bloc.dart';
+import '../models/user.dart';
+import '../services/api_service.dart';
 
 /// 手机号登录页面
 /// 提供手机号+验证码的登录方式
@@ -33,132 +37,155 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: AppTheme.backgroundDecoration,
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: Responsive.getResponsivePadding(context),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 400),
-                child: Card(
-                  child: Padding(
-                    padding:
-                        EdgeInsets.all(Responsive.getDynamicSize(context, 24)),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // 返回按钮和标题
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.arrow_back),
-                              onPressed: () => Navigator.pop(context),
-                            ),
-                            const Expanded(
-                              child: Text(
-                                '手机号登录',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        print('PhoneLoginScreen收到新的认证状态: $state');
+        if (state is AuthLoading) {
+          setState(() => _isLoading = true);
+        } else if (state is AuthFailure) {
+          setState(() => _isLoading = false);
+          _showError(state.message);
+        } else if (state is AuthAuthenticated) {
+          setState(() => _isLoading = false);
+          print('登录成功，用户昵称: ${state.user.nickname}');
+
+          // 确保在主线程上执行导航
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, AppRoutes.home);
+            }
+          });
+        }
+      },
+      child: Scaffold(
+        body: Container(
+          decoration: AppTheme.backgroundDecoration,
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: Responsive.getResponsivePadding(context),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(
+                          Responsive.getDynamicSize(context, 24)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 返回按钮和标题
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.arrow_back),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                              const Expanded(
+                                child: Text(
+                                  '手机号登录',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 48), // 为了保持标题居中
-                          ],
-                        ),
-                        SizedBox(
-                            height: Responsive.getDynamicSize(context, 32)),
-
-                        // 手机号输入框
-                        TextField(
-                          controller: _phoneController,
-                          decoration: const InputDecoration(
-                            labelText: '手机号',
-                            prefixIcon: Icon(Icons.phone_android),
-                            hintText: '请输入手机号',
+                              const SizedBox(width: 48), // 为了保持标题居中
+                            ],
                           ),
-                          keyboardType: TextInputType.phone,
-                        ),
-                        SizedBox(
-                            height: Responsive.getDynamicSize(context, 16)),
-
-                        // 验证码输入框和获取按钮
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _codeController,
-                                decoration: const InputDecoration(
-                                  labelText: '验证码',
-                                  prefixIcon: Icon(Icons.lock_outline),
-                                  hintText: '请输入验证码',
-                                ),
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            SizedBox(
-                                width: Responsive.getDynamicSize(context, 16)),
-                            ElevatedButton(
-                              onPressed:
-                                  _isLoading ? null : _getVerificationCode,
-                              child: const Text('获取验证码'),
-                            ),
-                          ],
-                        ),
-                        SizedBox(
-                            height: Responsive.getDynamicSize(context, 32)),
-
-                        // 登录按钮
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _login,
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Text('登录'),
-                          ),
-                        ),
-
-                        // 其他登录方式（仅在移动端显示）
-                        if (Responsive.isMobile(context)) ...[
                           SizedBox(
-                              height: Responsive.getDynamicSize(context, 24)),
-                          const Text(
-                            '其他登录方式',
-                            style: TextStyle(color: Colors.grey),
+                              height: Responsive.getDynamicSize(context, 32)),
+
+                          // 手机号输入框
+                          TextField(
+                            controller: _phoneController,
+                            decoration: const InputDecoration(
+                              labelText: '手机号',
+                              prefixIcon: Icon(Icons.phone_android),
+                              hintText: '请输入手机号',
+                            ),
+                            keyboardType: TextInputType.phone,
                           ),
                           SizedBox(
                               height: Responsive.getDynamicSize(context, 16)),
+
+                          // 验证码输入框和获取按钮
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildSocialLoginButton(
-                                icon: Icons.wechat,
-                                color: const Color(0xFF07C160),
+                              Expanded(
+                                child: TextField(
+                                  controller: _codeController,
+                                  decoration: const InputDecoration(
+                                    labelText: '验证码',
+                                    prefixIcon: Icon(Icons.lock_outline),
+                                    hintText: '请输入验证码',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
                               ),
                               SizedBox(
                                   width:
-                                      Responsive.getDynamicSize(context, 24)),
-                              _buildSocialLoginButton(
-                                icon: Icons.apple,
-                                color: Colors.black,
+                                      Responsive.getDynamicSize(context, 16)),
+                              ElevatedButton(
+                                onPressed:
+                                    _isLoading ? null : _getVerificationCode,
+                                child: const Text('获取验证码'),
                               ),
                             ],
                           ),
+                          SizedBox(
+                              height: Responsive.getDynamicSize(context, 32)),
+
+                          // 登录按钮
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _login,
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
+                                      ),
+                                    )
+                                  : const Text('登录'),
+                            ),
+                          ),
+
+                          // 其他登录方式（仅在移动端显示）
+                          if (Responsive.isMobile(context)) ...[
+                            SizedBox(
+                                height: Responsive.getDynamicSize(context, 24)),
+                            const Text(
+                              '其他登录方式',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                            SizedBox(
+                                height: Responsive.getDynamicSize(context, 16)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildSocialLoginButton(
+                                  icon: Icons.wechat,
+                                  color: const Color(0xFF07C160),
+                                ),
+                                SizedBox(
+                                    width:
+                                        Responsive.getDynamicSize(context, 24)),
+                                _buildSocialLoginButton(
+                                  icon: Icons.apple,
+                                  color: Colors.black,
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -208,13 +235,23 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       return;
     }
 
+    // 添加手机号验证
+    final phoneRegExp = RegExp(r'^1\d{10}$');
+    if (!phoneRegExp.hasMatch(_phoneController.text)) {
+      _showError('请输入有效的11位手机号');
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      // TODO: 实现获取验证码逻辑
-      await Future.delayed(const Duration(seconds: 1)); // 模拟网络请求
+      // 使用API服务发送验证码
+      final apiService = context.read<ApiService>();
+      print('正在为手机号: ${_phoneController.text}发送验证码');
+      await apiService.sendVerificationCode(_phoneController.text);
       _showSuccess('验证码已发送');
     } catch (e) {
-      _showError('获取验证码失败');
+      print('发送验证码失败: $e');
+      _showError('获取验证码失败: ${e.toString()}');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -228,17 +265,28 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    // 添加手机号验证
+    final phoneRegExp = RegExp(r'^1\d{10}$');
+    if (!phoneRegExp.hasMatch(_phoneController.text)) {
+      _showError('请输入有效的11位手机号');
+      return;
+    }
+
     try {
-      // TODO: 实现登录逻辑
-      await Future.delayed(const Duration(seconds: 1)); // 模拟网络请求
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, AppRoutes.home);
-      }
+      print(
+          '尝试使用手机号登录: ${_phoneController.text}, 验证码: ${_codeController.text}');
+      // 分发手机号登录事件到AuthBloc
+      context.read<AuthBloc>().add(
+            AuthPhoneLoginRequested(
+              _phoneController.text,
+              _codeController.text,
+            ),
+          );
+      // 注意：不需要在这里设置_isLoading，因为BlocListener会处理加载状态
     } catch (e) {
-      _showError('登录失败');
-    } finally {
+      print('登录过程中发生错误: $e');
       setState(() => _isLoading = false);
+      _showError('登录失败: ${e.toString()}');
     }
   }
 

@@ -4,6 +4,7 @@ import '../models/song.dart';
 import '../services/player_service.dart';
 import '../pages/player_page.dart';
 import '../utils/image_utils.dart';
+import '../models/play_song_info.dart';
 
 class SongListItem extends StatelessWidget {
   final Song song;
@@ -55,12 +56,13 @@ class SongListItem extends StatelessWidget {
         ),
       );
 
-      // 准备播放列表和当前歌曲
-      playerService.preparePlaylist(playlist, index);
-      await playerService.setCurrentSong(song);
+      // 转换播放列表
+      final playlistInfo =
+          playlist.map((s) => PlaySongInfo.fromSong(s)).toList();
 
-      // 开始播放
-      await playerService.startPlayback();
+      // 准备播放列表和当前歌曲
+      playerService.preparePlaylist(playlistInfo, index);
+      await playerService.play(playlistInfo[index]);
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
