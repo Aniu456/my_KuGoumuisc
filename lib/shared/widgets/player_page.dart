@@ -5,8 +5,8 @@ import '../../core/providers/provider_manager.dart';
 import '../../data/models/play_song_info.dart';
 import '../../services/player_service.dart';
 import 'dart:ui';
-import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
+import 'package:go_router/go_router.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
   const PlayerPage({super.key});
@@ -16,7 +16,7 @@ class PlayerPage extends ConsumerStatefulWidget {
 }
 
 class _PlayerPageState extends ConsumerState<PlayerPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   bool _showLyrics = false; // 控制是否显示歌词
   final ScrollController _lyricsScrollController =
@@ -30,10 +30,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       vsync: this,
       duration: const Duration(seconds: 20),
     )..repeat();
+
+    // 添加观察者以监控App生命周期
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    // 先移除观察者，避免回调时widget已销毁
+    WidgetsBinding.instance.removeObserver(this);
+
+    // 清理控制器资源
     _controller.dispose();
     _lyricsScrollController.dispose();
     super.dispose();
@@ -109,6 +116,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       );
     }
 
+    // 分割歌曲标题，获取歌手和歌名
+    List<String> titleParts = currentSong.title.split('-');
+    String artist = titleParts.isNotEmpty ? titleParts[0].trim() : '';
+    String songTitle =
+        titleParts.length > 1 ? titleParts[1].trim() : currentSong.title;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -173,41 +186,70 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         icon: const Icon(Icons.arrow_back_ios,
                             color: Colors.white),
                         onPressed: () {
-                          // 简单使用Navigator.pop，避免GoRouter的pop错误
-                          Navigator.of(context).pop();
+                          // 使用GoRouter正确返回
+                          context.pop();
                         },
                       ),
                       // 标题
-                      Text(
-                        _showLyrics ? '正在播放' : currentSong.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: MediaQuery.of(context).size.width * 0.6,
+                            alignment: Alignment.center,
+                            child: Text(
+                              _showLyrics ? '正在播放' : artist,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            width: MediaQuery.of(context).size.width * 0.6,
+                            alignment: Alignment.center,
+                            child: Text(
+                              _showLyrics ? '' : songTitle,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                      // 切换歌词/封面按钮
+                      // 添加分享按钮（可选功能）
                       IconButton(
-                        icon: Icon(
-                          _showLyrics ? Icons.album_outlined : Icons.lyrics,
-                          color: Colors.white,
-                        ),
+                        icon: const Icon(Icons.share, color: Colors.white),
                         onPressed: () {
-                          setState(() {
-                            _showLyrics = !_showLyrics;
-                          });
+                          // TODO: 实现分享功能
                         },
                       ),
                     ],
                   ),
                 ),
 
-                // 主要内容区域 - 封面或歌词
+                // 主要内容区域
                 Expanded(
                   child: _showLyrics
                       ? _buildLyricsView(lyrics, currentLyricIndex, currentSong)
-                      : _buildCoverAndWaveformView(
-                          currentSong, isPlaying, position, duration),
+                      : Column(
+                          children: [
+                            // 专辑封面区域
+                            _buildCoverAndWaveformView(
+                                currentSong, isPlaying, position, duration),
+
+                            // 展示两行歌词
+                            _buildMiniLyrics(
+                                lyrics, currentLyricIndex, position),
+                          ],
+                        ),
                 ),
 
                 // 底部控制区域
@@ -237,84 +279,134 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         // 播放控制按钮
         _buildPlayerControls(),
 
-        // 下一首歌曲提示卡片
-        if (nextSong != null)
-          Padding(
-            padding:
-                const EdgeInsets.only(bottom: 10.0, left: 15.0, right: 15.0),
-            child: Container(
+        // 下一首歌曲提示卡片 - 只在非随机播放模式下显示
+        if (playerService.playMode != PlayMode.random &&
+            playerService.playMode != PlayMode.single &&
+            playerService.nextSongInfo != null)
+          _buildNextSongCard(playerService.nextSongInfo!),
+      ],
+    );
+  }
+
+  // 提取为单独的Widget，显示下一首歌曲信息
+  Widget _buildNextSongCard(PlaySongInfo nextSongInfo) {
+    return Padding(
+      padding:
+          const EdgeInsets.only(top: 15, bottom: 10.0, left: 15.0, right: 15.0),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.black.withOpacity(0.4),
+              Colors.black.withOpacity(0.6),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            // 封面缩略图
+            Container(
+              width: 48,
+              height: 48,
+              margin: const EdgeInsets.only(right: 12),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(6),
+                color: Colors.grey[800],
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
+              clipBehavior: Clip.antiAlias,
+              child:
+                  nextSongInfo.cover != null && nextSongInfo.cover!.isNotEmpty
+                      ? Image.network(
+                          ImageUtils.getThumbnailUrl(nextSongInfo.cover),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(Icons.music_note,
+                                color: Colors.white);
+                          },
+                        )
+                      : const Icon(Icons.music_note, color: Colors.white),
+            ),
+
+            // 歌曲信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 封面缩略图
-                  Container(
-                    width: 40,
-                    height: 40,
-                    margin: const EdgeInsets.only(right: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      color: Colors.grey[800],
+                  Text(
+                    '下一首: ${_getSongTitle(nextSongInfo.title)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: nextSong.cover != null && nextSong.cover!.isNotEmpty
-                        ? Image.network(
-                            ImageUtils.getThumbnailUrl(nextSong.cover),
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Icon(Icons.music_note,
-                                  color: Colors.white);
-                            },
-                          )
-                        : const Icon(Icons.music_note, color: Colors.white),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-
-                  // 歌曲信息
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '下一首: ${nextSong.title}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          nextSong.artist,
-                          style: const TextStyle(
-                            color: Colors.white60,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                  Text(
+                    _getArtistName(nextSongInfo.title),
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 12,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-
-                  // 时长标签
-                  if (nextSong.duration != null)
-                    Text(
-                      _formatDuration(Duration(seconds: nextSong.duration!)),
-                      style: const TextStyle(
-                        color: Colors.white60,
-                        fontSize: 12,
-                      ),
-                    ),
                 ],
               ),
             ),
-          ),
-      ],
+
+            // 时长标签
+            if (nextSongInfo.duration != null)
+              Text(
+                _formatDuration(_calculateSongDuration(nextSongInfo.duration!)),
+                style: const TextStyle(
+                  color: Colors.white60,
+                  fontSize: 12,
+                ),
+              ),
+
+            // 直接播放下一首按钮
+            IconButton(
+              iconSize: 24,
+              icon:
+                  const Icon(Icons.play_circle_outline, color: Colors.white70),
+              onPressed: () {
+                // 点击直接播放下一首
+                ref.read(ProviderManager.playerServiceProvider).playNext();
+              },
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  // 计算歌曲实际时长
+  Duration _calculateSongDuration(int duration) {
+    // 判断数值单位是秒还是毫秒
+    if (duration > 10000) {
+      // 如果值大于10000，很可能已经是毫秒了
+      return Duration(milliseconds: duration);
+    } else {
+      // 否则认为是秒
+      return Duration(seconds: duration);
+    }
+  }
+
+  // 从完整标题中获取歌曲名
+  String _getSongTitle(String fullTitle) {
+    List<String> parts = fullTitle.split('-');
+    return parts.length > 1 ? parts[1].trim() : fullTitle;
+  }
+
+  // 从完整标题中获取艺术家名
+  String _getArtistName(String fullTitle) {
+    List<String> parts = fullTitle.split('-');
+    return parts.isNotEmpty ? parts[0].trim() : '';
   }
 
   // 构建歌词显示视图
@@ -337,48 +429,79 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       });
     }
 
-    return Container(
-      color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: lyrics.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.music_note, size: 64, color: Colors.white30),
-                  const SizedBox(height: 20),
-                  Text(
-                    '暂无歌词',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 16,
-                    ),
+    return Stack(
+      children: [
+        Container(
+          color: Colors.transparent, // 移除黑色底色
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: lyrics.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.music_note,
+                          size: 64, color: Colors.white30),
+                      const SizedBox(height: 20),
+                      Text(
+                        '暂无歌词',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              controller: _lyricsScrollController,
-              itemCount: lyrics.length,
-              padding: const EdgeInsets.symmetric(vertical: 40),
-              itemBuilder: (context, index) {
-                final isCurrentLine = index == currentIndex;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10.0),
-                  child: Text(
-                    lyrics[index].text,
-                    style: TextStyle(
-                      color: isCurrentLine ? Colors.white : Colors.white60,
-                      fontSize: isCurrentLine ? 20 : 16,
-                      fontWeight:
-                          isCurrentLine ? FontWeight.w600 : FontWeight.normal,
-                      height: 1.3,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                );
-              },
-            ),
+                )
+              : ListView.builder(
+                  controller: _lyricsScrollController,
+                  itemCount: lyrics.length,
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  itemBuilder: (context, index) {
+                    final isCurrentLine = index == currentIndex;
+                    return GestureDetector(
+                      onTap: () {
+                        // 点击歌词跳转到对应时间
+                        if (index < lyrics.length) {
+                          // 使用Consumer包装，避免在build中使用ref.read
+                          final playerService =
+                              ref.read(ProviderManager.playerServiceProvider);
+                          playerService.seek(lyrics[index].time);
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10.0),
+                        child: Text(
+                          lyrics[index].text,
+                          style: TextStyle(
+                            color:
+                                isCurrentLine ? Colors.white : Colors.white60,
+                            fontSize: isCurrentLine ? 20 : 16,
+                            fontWeight: isCurrentLine
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            height: 1.3,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        // 添加返回按钮，返回到封面模式
+        Positioned(
+          top: 10,
+          right: 10,
+          child: IconButton(
+            icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+            onPressed: () {
+              setState(() {
+                _showLyrics = false;
+              });
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -389,21 +512,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          const Spacer(flex: 1),
-
-          // 歌曲信息
-          if (!_showLyrics)
-            Text(
-              currentSong.artist,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
           const SizedBox(height: 30),
-
           // 专辑封面
           Hero(
             tag: 'album-cover',
@@ -450,21 +559,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
           const SizedBox(height: 40),
 
-          // 音频波形可视化图
-          SizedBox(
-            height: 40,
-            child: CustomPaint(
-              size: Size(MediaQuery.of(context).size.width, 40),
-              painter: WaveformPainter(
-                progress: duration.inMilliseconds > 0
-                    ? (position.inMilliseconds / duration.inMilliseconds)
-                        .clamp(0.0, 1.0)
-                    : 0.0,
-              ),
-            ),
-          ),
+          // // 音频波形可视化图
+          // SizedBox(
+          //   height: 40,
+          //   child: CustomPaint(
+          //     size: Size(MediaQuery.of(context).size.width, 40),
+          //     painter: WaveformPainter(
+          //       progress: duration.inMilliseconds > 0
+          //           ? (position.inMilliseconds / duration.inMilliseconds)
+          //               .clamp(0.0, 1.0)
+          //           : 0.0,
+          //     ),
+          //   ),
+          // ),
 
-          const Spacer(flex: 1),
+          // const Spacer(flex: 1),
         ],
       ),
     );
@@ -518,7 +627,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             ),
             SliderTheme(
               data: SliderThemeData(
-                trackHeight: 4.0,
+                trackHeight: 5.0,
                 thumbShape:
                     const RoundSliderThumbShape(enabledThumbRadius: 6.0),
                 overlayShape:
@@ -574,22 +683,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               },
             ),
             IconButton(
-              iconSize: 32,
+              iconSize: 36,
               icon: const Icon(Icons.skip_previous, color: Colors.white),
               onPressed: () {
                 ref.read(ProviderManager.playerServiceProvider).playPrevious();
               },
             ),
             Container(
-              width: 64,
-              height: 64,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 color: Theme.of(context).primaryColor.withOpacity(0.8),
                 shape: BoxShape.circle,
               ),
               child: IconButton(
                 padding: EdgeInsets.zero,
-                iconSize: 38,
+                iconSize: 36,
                 icon: Icon(
                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   color: Colors.white,
@@ -604,14 +713,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ),
             ),
             IconButton(
-              iconSize: 32,
+              iconSize: 36,
               icon: const Icon(Icons.skip_next, color: Colors.white),
               onPressed: () {
                 ref.read(ProviderManager.playerServiceProvider).playNext();
               },
             ),
             IconButton(
-              iconSize: 28,
+              iconSize: 36,
               icon: const Icon(Icons.playlist_play, color: Colors.white),
               onPressed: () {
                 // TODO: 实现播放列表查看
@@ -633,9 +742,85 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         return Icons.repeat_one;
       case PlayMode.sequence:
         return Icons.arrow_forward;
-      default:
-        throw Exception("Unknown play mode");
     }
+  }
+
+  // 在封面下方展示两行歌词的小组件
+  Widget _buildMiniLyrics(
+      List<LyricLine> lyrics, int currentIndex, Duration position) {
+    // 如果没有歌词，显示提示信息
+    if (lyrics.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        alignment: Alignment.center,
+        child: Text(
+          '暂无歌词',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.6),
+            fontSize: 16,
+          ),
+        ),
+      );
+    }
+
+    // 显示当前和下一行歌词
+    String currentLyric = currentIndex >= 0 && currentIndex < lyrics.length
+        ? lyrics[currentIndex].text
+        : '';
+
+    String nextLyric = currentIndex >= 0 && currentIndex + 1 < lyrics.length
+        ? lyrics[currentIndex + 1].text
+        : '';
+
+    return GestureDetector(
+      onTap: () {
+        // 点击进入完整歌词页面
+        setState(() {
+          _showLyrics = true;
+        });
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black.withOpacity(0.2),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Text(
+              currentLyric,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              nextLyric,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -645,51 +830,4 @@ class LyricLine {
   final String text;
 
   LyricLine(this.time, this.text);
-}
-
-// 波形绘制器
-class WaveformPainter extends CustomPainter {
-  final double progress;
-
-  WaveformPainter({required this.progress});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final activePaint = Paint()
-      ..color = Colors.blue.shade400
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 3;
-
-    final inactivePaint = Paint()
-      ..color = Colors.grey.shade700
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 3;
-
-    // 生成随机高度的线条模拟波形图
-    final barCount = 40;
-    final barWidth = size.width / barCount;
-    final random = math.Random(42); // 固定种子，确保每次绘制的波形相同
-
-    for (var i = 0; i < barCount; i++) {
-      // 随机生成高度
-      final normalizedHeight = 0.3 + (random.nextDouble() * 0.7);
-      final barHeight = normalizedHeight * size.height;
-
-      // 确定是否使用活跃颜色
-      final progressPosition = i / barCount;
-      final isActive = progressPosition <= progress;
-
-      // 绘制线条
-      canvas.drawLine(
-        Offset(i * barWidth, size.height / 2 - barHeight / 2),
-        Offset(i * barWidth, size.height / 2 + barHeight / 2),
-        isActive ? activePaint : inactivePaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(WaveformPainter oldDelegate) {
-    return oldDelegate.progress != progress;
-  }
 }

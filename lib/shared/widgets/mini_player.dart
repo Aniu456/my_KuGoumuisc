@@ -41,8 +41,8 @@ class MiniPlayer extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // 点击后打开全屏播放器
-            context.go('/player');
+            // 点击后打开全屏播放器，使用push而不是go，这样可以返回
+            context.push('/player');
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),

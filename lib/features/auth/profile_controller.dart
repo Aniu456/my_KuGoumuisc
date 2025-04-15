@@ -26,7 +26,7 @@ class UserProfile {
   final String nickname;
 
   /// 用户头像URL，可能为空
-  final String? avatar;
+  final String? pic;
 
   /// 用户个性昵称，可能为空
   final String? knickname;
@@ -40,31 +40,15 @@ class UserProfile {
   /// VIP类型，可能为空
   final String? vipType;
 
-  /// 关注的人数，默认为0
-  final int follows;
-
-  /// 粉丝数，默认为0
-  final int fans;
-
-  /// 是否是学生，默认为false
-  final bool isStudent;
-
-  /// 星座，可能为空
-  final int? constellation;
-
   /// 构造函数，初始化用户信息
   UserProfile({
     required this.userId,
     required this.nickname,
-    this.avatar,
+    this.pic,
     this.knickname,
     this.gender,
     this.isVip = false,
     this.vipType,
-    this.follows = 0,
-    this.fans = 0,
-    this.isStudent = false,
-    this.constellation,
   });
 
   /// 从 JSON 数据创建 UserProfile 实例
@@ -77,7 +61,7 @@ class UserProfile {
       nickname: json['nickname'] ?? '未知用户',
 
       /// 从 JSON 中获取头像URL
-      avatar: json['avatar_pic'],
+      pic: json['pic'],
 
       /// 从 JSON 中获取个性昵称
       knickname: json['k_nickname'],
@@ -86,24 +70,10 @@ class UserProfile {
       gender: _parseGender(json['gender']),
 
       /// 判断是否是VIP用户
-      isVip: json['vip_type'] != null && json['vip_type'] != '0',
+      isVip: json['is_vip'] != null && json['is_vip'] == '1',
 
       /// 获取VIP类型
       vipType: json['vip_type']?.toString(),
-
-      /// 获取关注人数，如果为空则默认为0
-      follows: json['follows'] ?? 0,
-
-      /// 获取粉丝数，如果为空则默认为0
-      fans: json['fans'] ?? 0,
-
-      /// 判断是否是学生
-      isStudent: json['student_visible'] == '1',
-
-      /// 获取星座，并尝试转换为 int 类型
-      constellation: json['constellation'] != null
-          ? int.tryParse(json['constellation'].toString())
-          : null,
     );
   }
 

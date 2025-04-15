@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../data/models/models.dart';
-                
+
 /// API服务类
 /// 负责处理所有与后端服务器的HTTP请求
 /// 使用Dio作为HTTP客户端，CookieJar进行Cookie管理，SharedPreferences进行本地数据存储

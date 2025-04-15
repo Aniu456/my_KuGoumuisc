@@ -50,7 +50,7 @@ class HomeScreen extends ConsumerWidget {
             right: 0,
 
             /// 距离底部一定距离，使其位于底部导航栏上方
-            bottom: 65,
+            bottom: 5,
             child: MiniPlayer(),
           ),
         ],

@@ -21,7 +21,11 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的'),
+        title: const Text('个人中心',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            )),
         elevation: 0,
         actions: [
           /// 设置按钮
@@ -128,11 +132,11 @@ class _ProfileContentState extends ConsumerState<_ProfileContent> {
           ),
 
           /// 功能区块
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           _buildFunctionsSection(context),
 
           /// 退出登录按钮
-          const SizedBox(height: 36),
+          const SizedBox(height: 24),
           _buildLogoutButton(context, ref),
         ],
       ),
@@ -142,10 +146,9 @@ class _ProfileContentState extends ConsumerState<_ProfileContent> {
   /// 构建用户信息卡片
   Widget _buildUserInfoCard(BuildContext context, UserProfile userProfile) {
     /// 处理用户头像 URL
-    final avatarUrl =
-        userProfile.avatar != null && userProfile.avatar!.isNotEmpty
-            ? ImageUtils.getMediumUrl(userProfile.avatar)
-            : null;
+    final avatarUrl = userProfile.pic != null && userProfile.pic!.isNotEmpty
+        ? ImageUtils.getMediumUrl(userProfile.pic)
+        : null;
 
     return Card(
       margin: const EdgeInsets.all(16),
