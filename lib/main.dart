@@ -1,419 +1,52 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'services/auth_service.dart';
-import 'services/api_service.dart';
-import 'services/player_service.dart';
-import 'bloc/auth/auth_bloc.dart';
-import 'widgets/discovery_tab.dart';
-import 'widgets/profile_tab.dart';
-import 'screens/login_screen.dart';
-import 'pages/player_page.dart';
-import 'package:provider/provider.dart';
-import 'utils/image_utils.dart';
-
-// 添加主题状态管理
-class ThemeProvider extends ChangeNotifier {
-  bool _isDarkMode = false;
-  bool get isDarkMode => _isDarkMode;
-
-  ThemeProvider() {
-    _loadThemePreference();
-  }
-
-  Future<void> _loadThemePreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isDarkMode = prefs.getBool('dark_mode') ?? false;
-    notifyListeners();
-  }
-
-  void toggleTheme() async {
-    _isDarkMode = !_isDarkMode;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('dark_mode', _isDarkMode);
-    notifyListeners();
-  }
-}
+import 'package:flutter/material.dart'; // 导入 Flutter 提供的 Material UI 库，包含了构建用户界面的基本组件和主题。
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // 导入 Riverpod 状态管理库，用于在应用程序中管理和共享状态。
+import 'package:shared_preferences/shared_preferences.dart'; // 导入 shared_preferences 插件，用于在本地存储简单的键值对数据。
+import 'core/theme/app_theme.dart'; // 导入自定义的应用主题配置，包括亮色和暗色主题。
+import 'core/navigation/app_router.dart'; // 导入自定义的路由配置，用于管理应用程序的导航。
+import 'core/providers/provider_manager.dart'; // 导入Provider管理器
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  final apiService = ApiService(prefs);
-  final playerService = PlayerService(apiService);
+  // 定义应用程序的入口函数 main，使用 async 表明这是一个异步函数。
+  WidgetsFlutterBinding
+      .ensureInitialized(); // 确保 Flutter 框架的 Widgets 绑定已经初始化，这在执行平台相关的操作（如 shared_preferences）之前是必需的。
 
-  // 添加捕获全局错误的逻辑
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-  };
+  // 初始化 SharedPreferences
+  final sharedPreferences = await SharedPreferences
+      .getInstance(); // 异步地获取 SharedPreferences 的实例，用于本地数据存储。
 
-  runApp(MyApp(
-    prefs: prefs,
-    apiService: apiService,
-    playerService: playerService,
-  ));
-}
-
-class MyApp extends StatelessWidget {
-  final SharedPreferences prefs;
-  final ApiService apiService;
-  final PlayerService playerService;
-
-  const MyApp({
-    super.key,
-    required this.prefs,
-    required this.apiService,
-    required this.playerService,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return MultiRepositoryProvider(
-      providers: [
-        RepositoryProvider.value(value: apiService),
-        RepositoryProvider<AuthService>(
-          create: (context) => AuthService(prefs, apiService),
-        ),
+  runApp(
+    ProviderScope(
+      // ProviderScope 是 Riverpod 的根 Widget，它使得应用程序中的其他 Widget 可以访问 Riverpod 的 Provider。
+      overrides: [
+        // 使用Provider管理器统一管理override
+        ...ProviderManager.getAllOverrides(sharedPreferences),
       ],
-      child: MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (_) => playerService),
-          ChangeNotifierProvider(create: (_) => ThemeProvider()),
-          BlocProvider<AuthBloc>(
-            create: (context) => AuthBloc(
-              authService: context.read<AuthService>(),
-            )..add(AuthCheckRequested()),
-          ),
-        ],
-        child:
-            Consumer<ThemeProvider>(builder: (context, themeProvider, child) {
-          return MaterialApp(
-            title: '酷狗音乐',
-            theme: ThemeData(
-              primaryColor: const Color(0xFF2196F3),
-              scaffoldBackgroundColor: Colors.white,
-              brightness: Brightness.light,
-              useMaterial3: true,
-              colorScheme: ColorScheme.light(
-                primary: const Color(0xFF2196F3),
-                secondary: Colors.blue[300]!,
-                surface: Colors.white,
-              ),
-            ),
-            darkTheme: ThemeData(
-              primaryColor: const Color(0xFF2196F3),
-              scaffoldBackgroundColor: const Color(0xFF121212),
-              brightness: Brightness.dark,
-              useMaterial3: true,
-              colorScheme: ColorScheme.dark(
-                primary: const Color(0xFF2196F3),
-                secondary: Colors.blue[300]!,
-                surface: const Color(0xFF202020),
-              ),
-            ),
-            themeMode:
-                themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            home: const SplashScreen(),
-            routes: {
-              '/login': (context) => const LoginScreen(),
-              '/player': (context) => const PlayerPage(),
-              '/main': (context) => const MainPage(),
-            },
-            debugShowCheckedModeBanner: false,
-          );
-        }),
-      ),
-    );
-  }
+      child:
+          const MyApp(), // MyApp 是应用程序的主要 Widget。使用 const 表明这个 Widget 是不可变的，可以提高性能。
+    ),
+  );
 }
 
-// 添加启动屏幕
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+class MyApp extends ConsumerWidget {
+  // 定义应用程序的主要 Widget MyApp，它继承自 ConsumerWidget，这意味着它可以监听 Riverpod 的 Provider。
+  const MyApp(
+      {super.key}); // MyApp 的构造函数，接收一个可选的 key 参数，用于标识 Widget 在 Widget 树中的位置。super.key 将 key 传递给父类 StatelessWidget 的构造函数。
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 重写 build 方法，它是 ConsumerWidget 的核心，用于构建 Widget 的 UI。它接收 BuildContext 和 WidgetRef 参数，WidgetRef 用于与 Riverpod 的 Provider 交互。
+    // 使用提供者获取路由配置
+    final router = ref.watch(
+        appRouterProvider); // 使用 ref.watch 监听 appRouterProvider，当 appRouterProvider 的值发生变化时，会重新构建当前 Widget。这里获取的是应用程序的路由配置。
 
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _navigateToMain();
-  }
-
-  Future<void> _navigateToMain() async {
-    // 模拟加载过程，2秒后跳转到主页面
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const MainPage()),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // 应用图标
-            Image.asset(
-              'assets/images/logo.png',
-              width: 120,
-              height: 120,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.music_note,
-                size: 120,
-                color: Colors.blue,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              '酷狗音乐',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue,
-              ),
-            ),
-            const SizedBox(height: 48),
-            const CircularProgressIndicator(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class MainPage extends StatefulWidget {
-  const MainPage({super.key});
-
-  @override
-  State<MainPage> createState() => _MainPageState();
-}
-
-class _MainPageState extends State<MainPage>
-    with SingleTickerProviderStateMixin {
-  int _currentIndex = 0;
-  late AnimationController _rotationController;
-
-  // 使用PageController提高页面切换性能
-  final PageController _pageController = PageController();
-
-  // 使用AutomaticKeepAliveClientMixin保持页面状态
-  final List<Widget> _pages = [
-    const DiscoveryTab(key: PageStorageKey('discovery')),
-    const ProfileTab(key: PageStorageKey('profile')),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _rotationController = AnimationController(
-      duration: const Duration(seconds: 10),
-      vsync: this,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _rotationController.dispose();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  // 切换页面的方法
-  void _changePage(int index) {
-    if (_currentIndex == index) return;
-    setState(() => _currentIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final playerService = context.watch<PlayerService>();
-    final currentSong = playerService.currentSongInfo;
-    final isPlaying = playerService.isPlaying;
-
-    // 控制旋转动画
-    if (isPlaying && !_rotationController.isAnimating) {
-      _rotationController.repeat();
-    } else if (!isPlaying && _rotationController.isAnimating) {
-      _rotationController.stop();
-    }
-
-    return Scaffold(
-      body: Stack(
-        children: [
-          // 使用PageView替代IndexedStack提高性能
-          PageView(
-            controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(), // 禁用滑动
-            children: _pages,
-            onPageChanged: (index) {
-              setState(() => _currentIndex = index);
-            },
-          ),
-          // 底部导航栏
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 24,
-            child: Center(
-              child: Container(
-                height: 55,
-                width: 260,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(27.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.home,
-                        color: _currentIndex == 0
-                            ? Theme.of(context).primaryColor
-                            : Colors.grey,
-                        size: 28,
-                      ),
-                      onPressed: () => _changePage(0),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.person,
-                        color: _currentIndex == 1
-                            ? Theme.of(context).primaryColor
-                            : Colors.grey,
-                        size: 28,
-                      ),
-                      onPressed: () => _changePage(1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: Hero(
-        tag: 'player_fab',
-        child: GestureDetector(
-          onTap: () {
-            if (currentSong != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const PlayerPage()),
-              );
-            }
-          },
-          child: Container(
-            width: 75,
-            height: 75,
-            margin: const EdgeInsets.only(bottom: 30),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.blue[300]!,
-                  Colors.blue[600]!,
-                ],
-              ),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 4,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: currentSong != null
-                ? Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                        width: 4,
-                      ),
-                    ),
-                    child: RotationTransition(
-                      turns: _rotationController,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(35),
-                        child: Stack(
-                          children: [
-                            Image.network(
-                              ImageUtils.getThumbnailUrl(
-                                  currentSong.cover ?? ''),
-                              width: 75,
-                              height: 75,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                color: Colors.grey[300],
-                                child: const Icon(Icons.music_note,
-                                    color: Colors.white, size: 35),
-                              ),
-                            ),
-                            // 添加渐变遮罩
-                            Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.black.withOpacity(0.2),
-                                    Colors.black.withOpacity(0),
-                                    Colors.black.withOpacity(0.2),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
-                : Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                        width: 2,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.music_note,
-                      color: Colors.white,
-                      size: 35,
-                    ),
-                  ),
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+    return MaterialApp.router(
+      // 返回一个 MaterialApp.router Widget，它是使用 Router 进行导航的 MaterialApp。
+      title: '音乐播放器', // 设置应用程序的标题，通常在任务管理器或最近使用的应用程序列表中显示。
+      theme: AppTheme.lightTheme, // 设置应用程序的默认亮色主题，从自定义的 AppTheme 中获取。
+      darkTheme: AppTheme.darkTheme, // 设置应用程序的暗色主题，从自定义的 AppTheme 中获取。
+      themeMode: ThemeMode.system, // 设置应用程序的主题模式为系统模式，即跟随设备的系统主题设置。
+      routerConfig: router, // 将之前获取的路由配置应用到 MaterialApp.router。
+      debugShowCheckedModeBanner: false, // 设置是否显示右上角的调试模式标签，这里设置为 false 不显示。
     );
   }
 }

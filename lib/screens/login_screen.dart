@@ -1,433 +1,356 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../bloc/auth/auth_bloc.dart';
-import '../services/api_service.dart';
-import '../widgets/loading_overlay.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../shared/widgets/loading_indicator.dart';
+import '../shared/widgets/error_handler.dart';
+import '../core/providers/provider_manager.dart';
 
-class LoginScreen extends StatefulWidget {
+/// 登录页面，使用 ConsumerStatefulWidget 以便监听 Riverpod 的状态
+class LoginScreen extends ConsumerStatefulWidget {
+  /// 构造函数
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+
+  /// 创建 LoginScreen 的状态
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final _phoneController = TextEditingController();
-  final _codeController = TextEditingController();
+/// LoginScreen 的状态类
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  /// 用于管理表单状态的 Key
+  final _formKey = GlobalKey<FormState>();
+
+  /// 用户名输入框的控制器
   final _usernameController = TextEditingController();
+
+  /// 密码输入框的控制器
   final _passwordController = TextEditingController();
+
+  /// 控制密码可见性的状态
   bool _isPasswordVisible = false;
-  bool _isLoading = false;
-  Timer? _cooldownTimer;
-  int _cooldownSeconds = 0;
+
+  /// 控制加载状态的布尔值
+  final bool _isLoading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
 
-  @override
+  /// 释放资源时调用
   void dispose() {
-    _tabController.dispose();
-    _phoneController.dispose();
-    _codeController.dispose();
+    /// 释放用户名输入框控制器
     _usernameController.dispose();
+
+    /// 释放密码输入框控制器
     _passwordController.dispose();
-    _cooldownTimer?.cancel();
     super.dispose();
   }
 
-  void _onPhoneLogin() {
-    if (_phoneController.text.isEmpty || _codeController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入手机号和验证码')),
-      );
-      return;
-    }
-
-    // 更新手机号正则表达式，支持所有11位手机号
-    final phoneRegExp = RegExp(r'^1\d{10}$');
-    if (!phoneRegExp.hasMatch(_phoneController.text)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的手机号')),
-      );
-      return;
-    }
-
-    print('正在尝试登录，手机号: ${_phoneController.text}');
-    context.read<AuthBloc>().add(
-          AuthPhoneLoginRequested(
-            _phoneController.text,
-            _codeController.text,
-          ),
-        );
+  /// 切换密码可见性
+  void _togglePasswordVisibility() {
+    setState(() {
+      _isPasswordVisible = !_isPasswordVisible;
+    });
   }
 
-  void _onPasswordLogin() {
-    if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入用户名和密码')),
-      );
-      return;
-    }
+  /// 处理登录流程
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
 
-    context.read<AuthBloc>().add(
-          AuthPasswordLoginRequested(
-            _usernameController.text,
-            _passwordController.text,
-          ),
-        );
-  }
-
-  Future<void> _sendVerificationCode() async {
-    if (_phoneController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入手机号')),
-      );
-      return;
-    }
-
-    // 更新手机号验证正则表达式，支持所有11位手机号
-    final phoneRegExp = RegExp(r'^1\d{10}$');
-    if (!phoneRegExp.hasMatch(_phoneController.text)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的手机号')),
-      );
-      return;
-    }
-
-    try {
-      setState(() => _isLoading = true);
-      print('正在发送验证码，手机号: ${_phoneController.text}');
-      final apiService = context.read<ApiService>();
-      final success =
-          await apiService.sendVerificationCode(_phoneController.text);
-
-      if (success) {
-        // 开始倒计时
-        setState(() {
-          _cooldownSeconds = 60;
-          _isLoading = false;
-        });
-        _startCooldownTimer();
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      print('发送验证码失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('发送验证码失败: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  void _startCooldownTimer() {
-    _cooldownTimer?.cancel();
-    _cooldownTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (timer) {
-        if (mounted) {
-          setState(() {
-            if (_cooldownSeconds > 0) {
-              _cooldownSeconds--;
-            } else {
-              _cooldownTimer?.cancel();
-            }
-          });
+    // 使用ErrorHandler处理登录操作
+    ErrorHandler.handleAsyncOperation<bool>(
+      context: context,
+      loadingMessage: '正在登录...',
+      successMessage: '登录成功！',
+      errorMessage: '登录失败',
+      future:
+          ref.read(ProviderManager.authControllerProvider).loginWithPassword(
+                _usernameController.text,
+                _passwordController.text,
+              ),
+      onSuccess: (success) {
+        if (success) {
+          context.go('/home');
         }
       },
     );
   }
 
   @override
+
+  /// 构建登录页面的 UI
   Widget build(BuildContext context) {
-    return BlocListener<AuthBloc, AuthState>(
-      listener: (context, state) {
-        print('收到新的认证状态: $state');
-        if (state is AuthLoading) {
-          setState(() => _isLoading = true);
-        } else {
-          setState(() => _isLoading = false);
-        }
+    /// 获取当前主题
+    final theme = Theme.of(context);
 
-        if (state is AuthFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-
-        if (state is AuthAuthenticated) {
-          // 使用 mounted 检查确保 widget 仍然在树中
-          if (!mounted) return;
-
-          print('登录成功处理：用户名: ${state.user.nickname}');
-
-          // 确保在主线程中执行导航
-          Future.microtask(() {
-            // 显示登录成功提示
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('登录成功'),
-                backgroundColor: Colors.green,
-              ),
-            );
-
-            // 安全地弹出登录页面
-            if (Navigator.canPop(context)) {
-              Navigator.of(context).pop();
-            }
-          });
-        }
-      },
-      child: LoadingOverlay(
-        isLoading: _isLoading,
-        message: '请稍候...',
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            title: const Text(
-              '登录',
-              style: TextStyle(color: Colors.black),
-            ),
-          ),
-          backgroundColor: Colors.white,
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 24),
-                  // Logo
-                  Center(
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      height: 180,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // 登录方式选项卡
-                  TabBar(
-                    labelColor: Theme.of(context).primaryColor,
-                    unselectedLabelColor: Colors.grey,
-                    indicatorColor: Theme.of(context).primaryColor,
-                    controller: _tabController,
-                    tabs: const [
-                      Tab(text: '手机号登录'),
-                      Tab(text: '账号密码登录'),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  // 登录表单
-                  SizedBox(
-                    height: 320,
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // 手机号登录表单
-                        _buildPhoneLoginForm(),
-                        // 账号密码登录表单
-                        _buildPasswordLoginForm(),
-                      ],
-                    ),
-                  ),
+    /// 返回 Scaffold 作为页面的基本结构
+    return Scaffold(
+      /// 使用 Stack 组件实现背景和内容的分层显示
+      body: Stack(
+        children: [
+          /// 背景容器，使用渐变色
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  theme.colorScheme.primary.withOpacity(0.8),
+                  theme.colorScheme.primary.withOpacity(0.6),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildPhoneLoginForm() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        children: [
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              labelText: '手机号',
-              contentPadding: const EdgeInsets.all(16),
-              labelStyle: TextStyle(color: Colors.grey[600]),
-              prefixIcon: Icon(Icons.phone_android, color: Colors.grey[600]),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Theme.of(context).primaryColor),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _codeController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: '验证码',
-                    labelStyle: TextStyle(color: Colors.grey[600]),
-                    prefixIcon:
-                        Icon(Icons.lock_outline, color: Colors.grey[600]),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(8),
+          /// 主要内容区域，使用 SafeArea 避免被系统状态栏等遮挡
+          SafeArea(
+            child: Center(
+              /// 使用 SingleChildScrollView 使内容在键盘弹出时可以滚动
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+
+                /// 垂直排列的子组件
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    /// 应用 Logo
+                    const Icon(
+                      Icons.music_note,
+                      size: 80,
+                      color: Colors.white,
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide:
-                          BorderSide(color: Theme.of(context).primaryColor),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              SizedBox(
-                width: 120,
-                child: ElevatedButton(
-                  onPressed: (_isLoading || _cooldownSeconds > 0)
-                      ? null
-                      : _sendVerificationCode,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    _cooldownSeconds > 0 ? '${_cooldownSeconds}s' : '获取验证码',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _onPhoneLogin,
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    const SizedBox(height: 16),
+
+                    /// 应用名称
+                    Text(
+                      '音乐播放器',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
-                    )
-                  : const Text('登录'),
+                    ),
+                    const SizedBox(height: 48),
+
+                    /// 登录表单
+                    _buildLoginForm(theme),
+
+                    const SizedBox(height: 24),
+
+                    /// 第三方登录选项
+                    _buildSocialLoginOptions(theme),
+
+                    const SizedBox(height: 24),
+
+                    /// 注册提示
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          '还没有账号？',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            // 导航到注册页面
+                          },
+                          child: const Text('立即注册'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
+
+          /// 加载指示器，当 _isLoading 为 true 时显示
+          if (_isLoading) const LoadingIndicator(),
         ],
       ),
     );
   }
 
-  Widget _buildPasswordLoginForm() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+  /// 构建登录表单
+  Widget _buildLoginForm(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+
+      /// 使用 Form 组件管理表单状态
+      child: Form(
+        key: _formKey,
+        child: Column(
+          children: [
+            /// 用户名输入框
+            TextFormField(
+              controller: _usernameController,
+              decoration: InputDecoration(
+                labelText: '用户名/手机号',
+                prefixIcon: const Icon(Icons.person),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+
+              /// 校验用户名是否为空
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '请输入用户名或手机号';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            /// 密码输入框
+            TextFormField(
+              controller: _passwordController,
+              obscureText: !_isPasswordVisible,
+              decoration: InputDecoration(
+                labelText: '密码',
+                prefixIcon: const Icon(Icons.lock),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _isPasswordVisible
+                        ? Icons.visibility_off
+                        : Icons.visibility,
+                  ),
+                  onPressed: _togglePasswordVisibility,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+
+              /// 校验密码是否为空
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '请输入密码';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            /// 登录按钮
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _login,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  '登录',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+
+            /// 忘记密码按钮
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  // 导航到忘记密码页面
+                },
+                child: const Text('忘记密码？'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建第三方登录选项
+  Widget _buildSocialLoginOptions(ThemeData theme) {
+    return Column(
+      children: [
+        const Text(
+          '或者使用以下方式登录',
+          style: TextStyle(color: Colors.white70),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            /// 手机号登录按钮
+            _socialLoginButton(
+              icon: Icons.phone_android,
+              label: '手机号',
+              onTap: () {
+                /// 导航到手机号登录页面
+                context.go('/phone-login');
+              },
+            ),
+            const SizedBox(width: 24),
+
+            /// 微信登录按钮
+            _socialLoginButton(
+              icon: Icons.wechat,
+              label: '微信',
+              onTap: () {
+                // 微信登录逻辑
+              },
+            ),
+            const SizedBox(width: 24),
+
+            /// 扫码登录按钮
+            _socialLoginButton(
+              icon: Icons.qr_code_scanner,
+              label: '扫码',
+              onTap: () {
+                // 扫码登录逻辑
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 构建单个第三方登录按钮
+  Widget _socialLoginButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
       child: Column(
         children: [
-          TextField(
-            controller: _usernameController,
-            decoration: InputDecoration(
-              labelText: '手机/邮箱/用户名/酷狗ID',
-              labelStyle: TextStyle(color: Colors.grey[600]),
-              prefixIcon: Icon(Icons.person_outline, color: Colors.grey[600]),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Theme.of(context).primaryColor),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
+          /// 社交平台图标容器
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
             ),
+            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _passwordController,
-            obscureText: !_isPasswordVisible,
-            decoration: InputDecoration(
-              labelText: '密码',
-              labelStyle: TextStyle(color: Colors.grey[600]),
-              prefixIcon: Icon(Icons.lock_outline, color: Colors.grey[600]),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
-                  color: Colors.grey[600],
-                ),
-                onPressed: () {
-                  setState(() {
-                    _isPasswordVisible = !_isPasswordVisible;
-                  });
-                },
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Theme.of(context).primaryColor),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _onPasswordLogin,
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : const Text('登录'),
-            ),
+          const SizedBox(height: 8),
+
+          /// 社交平台标签
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70),
           ),
         ],
       ),

@@ -1,17 +1,66 @@
-flutter/ephemeral/
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
 
-# Visual Studio user-specific files.
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+.gradle/
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+.vscode/
 
-# Visual Studio build-related files.
-x64/
-x86/
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
 
-# Visual Studio cache files
-# files ending in .cache can be ignored
-*.[Cc]ache
-# but keep track of directories ending in .cache
-!*.[Cc]ache/
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+# # iOS specific
+# /ios/.generated/
+# /ios/Flutter/App.framework/
+# /ios/Flutter/Flutter.framework/
+# /ios/Flutter/Generated.xcconfig
+# /ios/Flutter/app.flx
+# /ios/Flutter/app.zip
+# /ios/Flutter/flutter_assets/
+# /ios/Flutter/flutter_export_environment.sh
+# /ios/ServiceDefinitions.json
+# /ios/Runner/GeneratedPluginRegistrant.*
+
+# /android/app/debug
+# /android/app/profile
+# /android/app/release
+# /android/gradle/
+# /android/.gradle/
+# /android/.idea/
+# /android/local.properties
+# /android/gradlew
+# /android/gradlew.bat

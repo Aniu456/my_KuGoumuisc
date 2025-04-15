@@ -1,10 +1,8 @@
-import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:async';
+import 'package:just_audio/just_audio.dart';
+import '../data/models/play_song_info.dart';
+import '../services/api_service.dart';
 import 'dart:math';
-import '../models/play_song_info.dart';
-import 'api_service.dart';
-import 'audio_cache_manager.dart';
 
 // 导入缺失的math库
 import 'dart:math' as math;
@@ -17,10 +15,11 @@ enum PlayMode {
 }
 
 class PlayerService extends ChangeNotifier {
-  final ApiService _apiService;
+  late final ApiService _apiService;
   final AudioPlayer _audioPlayer;
-  late final AudioCacheManager _cacheManager;
   bool _isInitialized = false;
+  // TODO: Implement AudioCacheManager
+  // late AudioCacheManager _cacheManager;
 
   // 播放状态
   PlaySongInfo? _currentSongInfo;
@@ -43,6 +42,22 @@ class PlayerService extends ChangeNotifier {
   String? get lyrics => _lyrics;
   PlayMode get playMode => _playMode;
   List<PlaySongInfo> get playlist => _playlist;
+  int get currentIndex => _currentIndex;
+
+  // 进度比例，用于进度条
+  double get progress => duration.inMilliseconds > 0
+      ? position.inMilliseconds / duration.inMilliseconds
+      : 0.0;
+
+  // 导航控制
+  bool get hasNext => canPlayNext;
+  bool get hasPrevious => canPlayPrevious;
+  Future<void> next() async => await playNext();
+  Future<void> previous() async => await playPrevious();
+  Future<void> pause() async => await _audioPlayer.pause();
+  Future<void> resume() async => await _audioPlayer.play();
+  Future<void> seekTo(Duration position) async => await seek(position);
+
   bool get canPlayNext =>
       _playlist.isNotEmpty &&
       (_playMode == PlayMode.loop ||
@@ -57,8 +72,30 @@ class PlayerService extends ChangeNotifier {
 
   // 获取下一首歌曲信息
   PlaySongInfo? get nextSongInfo {
-    if (!canPlayNext) return null;
-    return _playlist[_currentIndex + 1];
+    if (!canPlayNext || _playlist.isEmpty || _currentIndex < 0) return null;
+
+    int nextIndex;
+    switch (_playMode) {
+      case PlayMode.sequence:
+      case PlayMode.loop:
+        nextIndex = (_currentIndex + 1) % _playlist.length;
+        break;
+      case PlayMode.single:
+        // 单曲循环模式下，下一首仍是当前歌曲
+        return _currentSongInfo;
+      case PlayMode.random:
+        // 随机模式下，随机选择一首不同的歌曲
+        if (_playlist.length > 1) {
+          do {
+            nextIndex = _random.nextInt(_playlist.length);
+          } while (nextIndex == _currentIndex && _playlist.length > 1);
+        } else {
+          nextIndex = 0;
+        }
+        break;
+    }
+
+    return _playlist[nextIndex];
   }
 
   PlayerService(this._apiService) : _audioPlayer = AudioPlayer() {
@@ -68,7 +105,8 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> _initCacheManager() async {
     if (!_isInitialized) {
-      _cacheManager = await AudioCacheManager.getInstance();
+      // TODO: Implement cache manager
+      // _cacheManager = await AudioCacheManager.getInstance();
       _isInitialized = true;
     }
   }
@@ -76,38 +114,29 @@ class PlayerService extends ChangeNotifier {
   // 核心播放函数
   Future<void> play(PlaySongInfo songInfo) async {
     try {
-      print('尝试播放歌曲: ${songInfo.title}');
+      print(
+          '尝试播放歌曲: ${songInfo.title}, 歌手: ${songInfo.artist}, Hash: ${songInfo.hash}');
       await _initCacheManager();
 
       // 标记当前正在尝试播放的歌曲
       _currentSongInfo = songInfo;
       notifyListeners();
 
-      // 1. 检查本地缓存
-      final cachedPath = await _cacheManager.getCachedPath(songInfo.hash);
-
-      if (cachedPath != null) {
-        // 2a. 有缓存，直接播放本地文件
-        try {
-          print('使用本地缓存播放: $cachedPath');
-          await _audioPlayer.setFilePath(cachedPath);
-          // 更新播放信息
-          await _cacheManager.updatePlayInfo(songInfo.hash);
-        } catch (e) {
-          print('本地文件播放失败: $e');
-          // 本地文件损坏，尝试网络播放
-          await _playFromNetwork(songInfo);
-        }
-      } else {
-        // 2b. 无缓存，播放网络流
-        await _playFromNetwork(songInfo);
-      }
+      // 1. 直接播放网络流 (暂时禁用缓存功能)
+      await _playFromNetwork(songInfo);
 
       // 4. 异步加载歌词
-      unawaited(_loadLyrics(songInfo.hash));
+      _loadLyrics(songInfo.hash); // 直接调用，不等待结果
 
       // 5. 开始播放
-      await _audioPlayer.play();
+      try {
+        await _audioPlayer.play();
+        print('播放器开始播放');
+      } catch (e) {
+        print('播放器播放命令失败: $e');
+        rethrow;
+      }
+
       notifyListeners();
     } catch (e) {
       print('播放失败: $e');
@@ -156,37 +185,55 @@ class PlayerService extends ChangeNotifier {
       final headers = {
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'http://8.148.7.143:3000',
+        'Referer': 'https://kugou.com',
         'Accept': '*/*',
       };
 
       // 尝试将HTTP URL转换为HTTPS（解决明文HTTP流量问题）
       String playUrl = urlResponse;
-      if (playUrl.startsWith('http://')) {
-        // 尝试使用HTTPS替代HTTP
-        final httpsUrl = playUrl.replaceFirst('http://', 'https://');
-        print('尝试HTTPS URL: $httpsUrl');
-        try {
-          await _audioPlayer.setUrl(httpsUrl, headers: headers);
-          playUrl = httpsUrl;
-        } catch (e) {
-          print('HTTPS连接失败，回退到原始URL: $e');
-          // 回退到原始URL - 此时需要AndroidManifest.xml中设置usesCleartextTraffic=true
-          await _audioPlayer.setUrl(playUrl, headers: headers);
-        }
-      } else {
-        await _audioPlayer.setUrl(playUrl, headers: headers);
-      }
+      print('原始播放URL: $playUrl');
 
-      print('播放URL设置成功: $playUrl');
-
-      // 尝试在后台缓存
       try {
-        unawaited(_cacheManager.cacheAudio(songInfo));
+        // 首先尝试直接设置URL
+        await _audioPlayer.setUrl(playUrl, headers: headers);
+        print('播放URL设置成功: $playUrl');
       } catch (e) {
-        print('缓存失败: $e');
-        // 忽略缓存错误，不影响播放
+        print('直接设置URL失败: $e');
+
+        // 如果是HTTP URL，尝试转换为HTTPS
+        if (playUrl.startsWith('http://')) {
+          final httpsUrl = playUrl.replaceFirst('http://', 'https://');
+          print('尝试HTTPS URL: $httpsUrl');
+          try {
+            await _audioPlayer.setUrl(httpsUrl, headers: headers);
+            playUrl = httpsUrl;
+            print('HTTPS URL设置成功');
+          } catch (e) {
+            print('HTTPS设置失败: $e');
+            // 最后一次尝试，使用原始URL
+            try {
+              // 确保播放器已停止
+              await _audioPlayer.stop();
+              print('尝试使用原始URL: $playUrl');
+              await _audioPlayer.setUrl(playUrl, headers: headers);
+              print('原始URL设置成功');
+            } catch (e) {
+              print('所有URL尝试都失败: $e');
+              throw Exception('无法设置播放URL: $e');
+            }
+          }
+        } else {
+          // 重新抛出原始异常
+          rethrow;
+        }
       }
+
+      // TODO: 实现缓存功能
+      // try {
+      //   unawaited(_cacheManager.cacheAudio(songInfo));
+      // } catch (e) {
+      //   print('缓存失败: $e');
+      // }
     } catch (e) {
       print('网络播放设置失败: $e');
       throw Exception(
@@ -197,12 +244,57 @@ class PlayerService extends ChangeNotifier {
   // 异步加载歌词
   Future<void> _loadLyrics(String hash) async {
     try {
+      print('开始加载歌词，hash: $hash');
       final lyrics = await _apiService.getFullLyric(hash);
-      _lyrics = lyrics;
+
+      if (lyrics.isNotEmpty) {
+        _lyrics = lyrics;
+        print('歌词加载成功，长度: ${lyrics.length}');
+      } else {
+        _lyrics = '暂无歌词';
+        print('未找到歌词');
+      }
+
+      // 处理歌词格式，确保带有时间标签
+      if (_lyrics != null && !_lyrics!.contains('[')) {
+        // 如果歌词没有时间标签，则尝试添加
+        final lines = _lyrics!
+            .split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
+        final formattedLyrics = <String>[];
+
+        // 平均分配时间标签
+        final totalDuration = _duration.inMilliseconds;
+        final lineCount = lines.length;
+
+        if (lineCount > 0 && totalDuration > 0) {
+          final interval = totalDuration / lineCount;
+
+          for (int i = 0; i < lineCount; i++) {
+            final time = Duration(milliseconds: (i * interval).round());
+            final minutes =
+                time.inMinutes.remainder(60).toString().padLeft(2, '0');
+            final seconds =
+                time.inSeconds.remainder(60).toString().padLeft(2, '0');
+            final milliseconds = time.inMilliseconds
+                .remainder(1000)
+                .toString()
+                .padLeft(3, '0')
+                .substring(0, 2);
+
+            formattedLyrics.add('[$minutes:$seconds.$milliseconds]${lines[i]}');
+          }
+
+          _lyrics = formattedLyrics.join('\n');
+        }
+      }
+
       notifyListeners();
     } catch (e) {
       print('加载歌词失败: $e');
-      _lyrics = null;
+      _lyrics = '加载歌词失败';
+      notifyListeners();
     }
   }
 
@@ -217,7 +309,9 @@ class PlayerService extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
-    await _audioPlayer.seek(position);
+    if (_audioPlayer.audioSource != null) {
+      await _audioPlayer.seek(position);
+    }
   }
 
   Future<void> stop() async {
@@ -394,54 +488,76 @@ class PlayerService extends ChangeNotifier {
 
   // 播放器事件监听设置
   void _setupAudioPlayer() {
+    print('设置音频播放器事件监听');
+
+    // 添加错误处理
+    _audioPlayer.playbackEventStream.listen((event) {
+      // 播放事件处理
+      print('播放事件: $event');
+    }, onError: (Object e, StackTrace st) {
+      print('音频播放器错误: $e');
+      if (e is PlayerException) {
+        print('错误代码: ${e.code}');
+        print('错误消息: ${e.message}');
+
+        // 尝试恢复播放
+        if (_currentSongInfo != null) {
+          _handlePlayError(_currentSongInfo!, e);
+        }
+      }
+    });
+
+    // 播放状态监听
     _audioPlayer.playerStateStream.listen((state) {
       _isPlaying = state.playing;
+      print(
+          '播放状态变化: playing=${state.playing}, processingState=${state.processingState}');
       notifyListeners();
     });
 
+    // 位置监听
     _audioPlayer.positionStream.listen((pos) {
       _position = pos;
       notifyListeners();
     });
 
+    // 时长监听
     _audioPlayer.durationStream.listen((dur) {
       _duration = dur ?? Duration.zero;
+      print('获取到歌曲时长: ${_duration.inSeconds}秒');
       notifyListeners();
     });
 
+    // 播放完成监听
     _audioPlayer.processingStateStream.listen((state) {
+      print('处理状态: $state');
       if (state == ProcessingState.completed) {
+        print('歌曲播放完成，准备下一首');
         _onSongComplete();
-      }
-    });
-
-    _audioPlayer.playbackEventStream.listen((event) {
-      // 播放事件处理
-    }, onError: (Object e, StackTrace st) {
-      if (kDebugMode) {
-        print('音频播放器错误: $e');
-        if (e is PlayerException) {
-          print('错误代码: ${e.code}');
-          print('错误消息: ${e.message}');
-
-          // 尝试恢复播放
-          if (_currentSongInfo != null) {
-            _handlePlayError(_currentSongInfo!, e);
-          }
-        }
       }
     });
   }
 
   // 处理歌曲播放完成事件
   void _onSongComplete() {
+    print('歌曲播放完成，触发下一首处理');
+
     if (_playMode == PlayMode.single) {
       // 单曲循环，从头开始播放当前歌曲
-      seek(Duration.zero);
-      _audioPlayer.play();
+      try {
+        seek(Duration.zero).then((_) {
+          _audioPlayer.play();
+          print('单曲循环：重新开始播放');
+        });
+      } catch (e) {
+        print('单曲循环重播失败: $e，尝试播放下一首');
+        Future.microtask(() => playNext());
+      }
     } else {
       // 其他模式，播放下一首
-      playNext();
+      print('非单曲循环模式：立即播放下一首');
+      // 使用microtask确保在当前事件循环结束后执行
+      Future.microtask(() => playNext());
     }
   }
 

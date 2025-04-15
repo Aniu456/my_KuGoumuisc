@@ -45,11 +45,6 @@ class ImageUtils {
     return getImageUrl(originalUrl, size: 480);
   }
 
-  /// 获取大图URL（用于高清显示），与getLargeUrl功能相同
-  static String getLargeImageUrl(String? originalUrl) {
-    return getLargeUrl(originalUrl);
-  }
-
   /// 创建缓存网络图片组件
   static Widget createCachedImage(
     String? url, {

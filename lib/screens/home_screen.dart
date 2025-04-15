@@ -1,42 +1,94 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../bloc/auth/auth_bloc.dart';
-import '../widgets/discovery_tab.dart';
-import '../widgets/profile_tab.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../shared/widgets/mini_player.dart';
+import 'recommendation_screen.dart';
+import 'search_screen.dart';
+import 'playlist_screen.dart';
+import 'profile_screen.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+/// 当前选中的底部导航索引
+final currentTabProvider = StateProvider<int>((ref) => 0);
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
+class HomeScreen extends ConsumerWidget {
+  /// 构造函数
+  HomeScreen({super.key});
 
-class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  /// 定义底部导航项对应的页面列表
+  final List<Widget> _pages = [
+    /// 发现页面
+    const RecommendationScreen(),
 
-  final _pages = const [
-    DiscoveryTab(),
-    ProfileTab(),
+    /// 歌单页面
+    const PlaylistScreen(),
+
+    /// 搜索页面
+    const SearchScreen(),
+
+    /// 个人中心页面
+    const ProfileScreen(),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    /// 监听当前选中的底部导航索引状态
+    final currentTab = ref.watch(currentTabProvider);
+
+    /// 返回 Scaffold 作为页面基本结构
     return Scaffold(
-      body: _pages[_currentIndex],
+      /// 使用 Stack 组件实现内容区域和底部迷你播放器的层叠显示
+      body: Stack(
+        children: [
+          /// 主内容区域，使用 IndexedStack 根据当前选中的索引显示对应的页面
+          IndexedStack(
+            index: currentTab,
+            children: _pages,
+          ),
+
+          /// 迷你播放器，使用 Positioned 固定在底部导航栏上方
+          const Positioned(
+            left: 0,
+            right: 0,
+
+            /// 距离底部一定距离，使其位于底部导航栏上方
+            bottom: 65,
+            child: MiniPlayer(),
+          ),
+        ],
+      ),
+
+      /// 底部导航栏
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        selectedItemColor: Colors.blue,
+        /// 当前选中的索引
+        currentIndex: currentTab,
+
+        /// 底部导航项点击回调，更新当前选中的索引
+        onTap: (index) => ref.read(currentTabProvider.notifier).state = index,
+
+        /// 设置底部导航栏的类型为固定，显示所有标签
+        type: BottomNavigationBarType.fixed,
+
+        /// 选中时的颜色
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+
+        /// 未选中时的颜色
         unselectedItemColor: Colors.grey,
+
+        /// 底部导航项列表
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.explore_outlined),
-            activeIcon: Icon(Icons.explore),
+            icon: Icon(Icons.home),
             label: '发现',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
+            icon: Icon(Icons.playlist_play),
+            label: '歌单',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: '搜索',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
             label: '我的',
           ),
         ],

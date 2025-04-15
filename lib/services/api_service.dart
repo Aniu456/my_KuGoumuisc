@@ -1,22 +1,20 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import '../models/recent_song.dart';
-import '../models/search_response.dart';
-import '../models/play_song_info.dart';
-import '../models/song_mv.dart';
-
+import '../data/models/models.dart';
+                
 /// API服务类
 /// 负责处理所有与后端服务器的HTTP请求
-/// 使用Dio作为HTTP客户端，SharedPreferences进行本地数据存储
+/// 使用Dio作为HTTP客户端，CookieJar进行Cookie管理，SharedPreferences进行本地数据存储
 class ApiService {
   /// 服务器基础URL
   static const String baseUrl = 'http://8.148.7.143:3000';
+  // static const String baseUrl = 'http://127.0.0.1:3000';
+  // static const String baseUrl = 'http://10.0.2.2:3000';
 
   /// 本地存储的歌单缓存键名
   static const String _playlistsCacheKey = 'playlists_cache';
   static const String _recentSongsCacheKey = 'recent_songs_cache';
-  static const String _favoritePlaylistIdKey = 'favorite_playlist_id';
   static const Duration _cacheExpiration = Duration(minutes: 30); // 缓存过期时间
   static const int _maxRetries = 3; // 最大重试次数
 
@@ -31,9 +29,8 @@ class ApiService {
   ApiService(this._prefs) : _dio = Dio() {
     // 配置Dio基本设置
     _dio.options.baseUrl = baseUrl;
-    _dio.options.connectTimeout = const Duration(seconds: 10); // 增加连接超时时间
-    _dio.options.receiveTimeout = const Duration(seconds: 10); // 增加接收超时时间
-    _dio.options.sendTimeout = const Duration(seconds: 10); // 增加发送超时时间
+    _dio.options.connectTimeout = const Duration(seconds: 5);
+    _dio.options.receiveTimeout = const Duration(seconds: 3);
     _dio.options.validateStatus = (status) {
       return status! < 500 || status == 500 || status == 502;
     };
@@ -54,16 +51,24 @@ class ApiService {
             for (var cookie in cookies) {
               if (cookie.contains('token=')) {
                 _prefs.setString(
-                    'auth_token', _extractCookieValue(cookie, 'token'));
+                  'auth_token',
+                  _extractCookieValue(cookie, 'token'),
+                );
               } else if (cookie.contains('userid=')) {
                 _prefs.setString(
-                    'user_id', _extractCookieValue(cookie, 'userid'));
+                  'user_id',
+                  _extractCookieValue(cookie, 'userid'),
+                );
               } else if (cookie.contains('vip_token=')) {
                 _prefs.setString(
-                    'vip_token', _extractCookieValue(cookie, 'vip_token'));
+                  'vip_token',
+                  _extractCookieValue(cookie, 'vip_token'),
+                );
               } else if (cookie.contains('vip_type=')) {
                 _prefs.setString(
-                    'vip_type', _extractCookieValue(cookie, 'vip_type'));
+                  'vip_type',
+                  _extractCookieValue(cookie, 'vip_type'),
+                );
               }
             }
           }
@@ -90,18 +95,34 @@ class ApiService {
         onError: (error, handler) {
           if (error.response?.statusCode == 401) {
             // Token过期，清除本地存储的认证信息
-            _clearAuthData();
+            clearAuthData();
           }
           return handler.next(error);
         },
       ),
     );
   }
-
   // 从Cookie字符串中提取值
   String _extractCookieValue(String cookie, String key) {
     final match = RegExp('$key=([^;]*)').firstMatch(cookie);
     return match?.group(1) ?? '';
+  }
+
+  /// 清除歌单缓存
+  void clearPlaylistsCache() {
+    _prefs.remove(_playlistsCacheKey);
+  }
+
+  /// 清除认证相关数据
+  Future<void> clearAuthData() async {
+    // 清除SharedPreferences中的认证数据
+    await _prefs.remove('auth_token');
+    await _prefs.remove('user_id');
+    await _prefs.remove('vip_token');
+    await _prefs.remove('vip_type');
+    await _prefs.remove('user_data');
+    // 清除歌单缓存
+    clearPlaylistsCache();
   }
 
   /// 手机号登录
@@ -111,7 +132,6 @@ class ApiService {
   /// @throws Exception 当登录失败时抛出异常
   Future<Map<String, dynamic>> loginWithPhone(String phone, String code) async {
     try {
-      print('手机号登录请求开始 - 手机号: $phone, 验证码: $code');
       final response = await _dio.post(
         '/login/cellphone',
         queryParameters: {
@@ -120,40 +140,72 @@ class ApiService {
         },
       );
 
-      print('手机号登录响应: ${response.data}');
       final responseData = response.data as Map<String, dynamic>;
+
       if (responseData['status'] == 1) {
-        // 登录成功后立即缓存我喜欢歌单ID
-        print('手机号登录成功，开始缓存歌单信息');
-        await _cacheFavoritePlaylistId();
+        // 检查data字段是否存在
+        if (responseData['data'] != null &&
+            responseData['data'] is Map<String, dynamic>) {
+          final data = responseData['data'] as Map<String, dynamic>;
+
+          // 确保必要的字段存在，若不存在则添加默认值
+          if (data['token'] == null && responseData['token'] != null) {
+            data['token'] = responseData['token'];
+          }
+
+          // 将token保存到本地
+          if (data['token'] != null) {
+            _prefs.setString('auth_token', data['token']);
+          }
+
+          // 处理其他可能有用的字段
+          if (data['vip_token'] != null) {
+            _prefs.setString('vip_token', data['vip_token']);
+          }
+        } else if (responseData['token'] != null) {
+          // 如果data不存在但token在根部，则创建data
+          responseData['data'] = {'token': responseData['token']};
+          _prefs.setString('auth_token', responseData['token']);
+        }
+
         return responseData;
       }
 
-      final errorMsg =
-          responseData['error_msg'] ?? responseData['data'] ?? '登录失败';
-      print('手机号登录失败: $errorMsg');
-      throw Exception(errorMsg);
+      throw Exception(
+          responseData['error_msg'] ?? responseData['data'] ?? '登录失败');
     } on DioException catch (e) {
-      print('手机号登录网络异常: ${e.message}');
-      if (e.response != null) {
-        print('响应数据: ${e.response?.data}');
-      }
       throw _handleDioError(e);
     } catch (e) {
-      print('手机号登录其他异常: $e');
+      throw Exception('登录过程中发生错误: $e');
+    }
+  }
+
+  /// 发送验证码
+  /// @param phone 手机号
+  /// @return 返回是否发送成功
+  Future<bool> sendVerificationCode(String phone) async {
+    try {
+      final response = await _dio.post(
+        '/captcha/sent',
+        queryParameters: {'mobile': phone},
+      );
+
+      if (response.data['status'] == 1) {
+        return true;
+      } else {
+        throw Exception(response.data['data']);
+      }
+    } catch (e) {
       rethrow;
     }
   }
 
-  /// 账号密码登录
+  /// 使用用户名和密码登录
   /// @param username 用户名
   /// @param password 密码
-  /// @return 返回登录响应数据
-  /// @throws Exception 当登录失败时抛出异常
+  /// @return 返回登录响应数据，包含用户信息和token
   Future<Map<String, dynamic>> loginWithPassword(
-    String username,
-    String password,
-  ) async {
+      String username, String password) async {
     try {
       final response = await _dio.post(
         '/login',
@@ -164,91 +216,42 @@ class ApiService {
       );
 
       final responseData = response.data as Map<String, dynamic>;
+
       if (responseData['status'] == 1) {
-        // 登录成功后立即缓存我喜欢歌单ID
-        await _cacheFavoritePlaylistId();
+        // 检查data字段是否存在
+        if (responseData['data'] != null &&
+            responseData['data'] is Map<String, dynamic>) {
+          final data = responseData['data'] as Map<String, dynamic>;
+
+          // 确保必要的字段存在，若不存在则添加默认值
+          if (data['token'] == null && responseData['token'] != null) {
+            data['token'] = responseData['token'];
+          }
+
+          // 将token保存到本地
+          if (data['token'] != null) {
+            _prefs.setString('auth_token', data['token']);
+          }
+
+          // 处理其他可能有用的字段
+          if (data['vip_token'] != null) {
+            _prefs.setString('vip_token', data['vip_token']);
+          }
+        } else if (responseData['token'] != null) {
+          // 如果data不存在但token在根部，则创建data
+          responseData['data'] = {'token': responseData['token']};
+          _prefs.setString('auth_token', responseData['token']);
+        }
+
         return responseData;
       }
 
-      throw Exception(responseData['error_msg'] ?? '登录失败');
+      throw Exception(
+          responseData['error_msg'] ?? responseData['data'] ?? '登录失败');
     } on DioException catch (e) {
       throw _handleDioError(e);
-    }
-  }
-
-  /// 缓存我喜欢歌单ID
-  Future<void> _cacheFavoritePlaylistId() async {
-    try {
-      final playlists = await getUserPlaylists();
-      final List playlistInfo = playlists['info'] as List;
-
-      // 查找"我喜欢"歌单
-      final favoritePlaylist = playlistInfo.firstWhere(
-        (playlist) => playlist['name'].toString().trim() == '我喜欢',
-        orElse: () => playlistInfo.firstWhere(
-          (playlist) => playlist['name'].toString().trim() == '收藏',
-          orElse: () => {},
-        ),
-      );
-
-      if (favoritePlaylist.isNotEmpty) {
-        final listId = favoritePlaylist['listid']?.toString();
-        if (listId != null && listId.isNotEmpty) {
-          await _prefs.setString(_favoritePlaylistIdKey, listId);
-          print('成功缓存我喜欢歌单ID: $listId');
-        }
-      }
     } catch (e) {
-      print('缓存我喜欢歌单ID失败: $e');
-    }
-  }
-
-  /// 获取缓存的我喜欢歌单ID
-  String? getFavoritePlaylistIdFromCache() {
-    return _prefs.getString(_favoritePlaylistIdKey);
-  }
-
-  /// 清除所有认证相关数据
-  void _clearAuthData() {
-    _prefs.remove('auth_token');
-    _prefs.remove('user_id');
-    _prefs.remove('vip_token');
-    _prefs.remove('vip_type');
-    _prefs.remove('user_data');
-    _prefs.remove(_favoritePlaylistIdKey);
-    _clearPlaylistsCache();
-  }
-
-  /// 发送验证码
-  /// @param phone 手机号
-  /// @return 返回是否发送成功
-  Future<bool> sendVerificationCode(String phone) async {
-    try {
-      print('开始发送验证码 - 手机号: $phone');
-      final response = await _dio.post(
-        '/captcha/sent',
-        queryParameters: {'mobile': phone},
-      );
-
-      print('发送验证码响应: ${response.data}');
-      if (response.data['status'] == 1) {
-        print('验证码发送成功');
-        return true;
-      } else {
-        final errorMsg =
-            response.data['data'] ?? response.data['error_msg'] ?? '发送验证码失败';
-        print('验证码发送失败: $errorMsg');
-        throw Exception(errorMsg);
-      }
-    } on DioException catch (e) {
-      print('发送验证码网络异常: ${e.message}');
-      if (e.response != null) {
-        print('响应数据: ${e.response?.data}');
-      }
-      throw _handleDioError(e);
-    } catch (e) {
-      print('发送验证码其他异常: $e');
-      rethrow;
+      throw Exception('登录过程中发生错误: $e');
     }
   }
 
@@ -286,140 +289,91 @@ class ApiService {
     }
   }
 
-  /// 清除歌单缓存
-  void _clearPlaylistsCache() {
-    _prefs.remove(_playlistsCacheKey);
-  }
-
-  /// 获取用户歌单
+  /// 获取用户歌单列表
+  /// @param forceRefresh 是否强制刷新，默认false
+  /// @return 返回用户歌单列表数据
+  /// @throws Exception 当获取失败时抛出异常
   Future<Map<String, dynamic>> getUserPlaylists(
       {bool forceRefresh = false}) async {
     try {
       // 尝试从缓存获取
       if (!forceRefresh) {
-        final cachedData = _getValidCache(_playlistsCacheKey);
+        final cachedData = getValidCache(_playlistsCacheKey);
         if (cachedData != null) {
-          // 在后台刷新缓存
-          Future.delayed(Duration.zero, () async {
-            try {
-              final response = await _dio.get('/user/playlist');
-              print('后台刷新歌单缓存响应: ${response.data}');
-              if (response.data['status'] == 1) {
-                final cacheData = {
-                  'data': response.data['data'],
-                  'timestamp': DateTime.now().millisecondsSinceEpoch,
-                };
-                await _updateCache(_playlistsCacheKey, cacheData);
-              }
-            } catch (e) {
-              print('后台刷新歌单缓存失败: $e');
-            }
-          });
-          return {
-            'info': cachedData['data']['info'] as List,
-            'list_count': cachedData['data']['info'].length,
-          };
+          // 如果有有效缓存，在后台刷新缓存数据
+          refreshCacheInBackground(
+              _playlistsCacheKey, () => _fetchUserPlaylists());
+          return cachedData;
         }
       }
 
-      // 从服务器获取新数据
-      final response = await _dio.get('/user/playlist');
-      print('获取用户歌单响应: ${response.data}');
-
-      if (response.data['status'] == 1) {
-        final responseData = response.data['data'];
-        final cacheData = {
-          'data': responseData,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        };
-        await _updateCache(_playlistsCacheKey, cacheData);
-        return {
-          'info': responseData['info'] as List,
-          'list_count': responseData['info'].length,
-        };
-      } else {
-        // 处理错误状态
-        final errorCode = response.data['error_code'];
-        final errorMsg = response.data['error_msg'] ?? '未知错误';
-        print('获取歌单失败 - 错误码: $errorCode, 错误信息: $errorMsg');
-
-        // 如果是token过期或未登录错误，清除认证数据
-        if (errorCode == 20017) {
-          print('Token已过期或未登录，清除认证数据');
-          _clearAuthData();
-        }
-
-        throw Exception('获取歌单失败: $errorMsg (错误码: $errorCode)');
-      }
+      // 如果没有缓存或强制刷新，直接从服务器获取
+      return await _fetchUserPlaylists();
     } catch (e) {
-      print('获取歌单异常: $e');
+      print('获取用户歌单列表失败: $e');
+
       // 如果请求失败但有缓存，返回缓存
-      final cachedData = _getValidCache(_playlistsCacheKey);
+      final cachedData = getValidCache(_playlistsCacheKey);
       if (cachedData != null) {
-        print('使用缓存的歌单数据');
-        return {
-          'info': cachedData['data']['info'] as List,
-          'list_count': cachedData['data']['info'].length,
-        };
+        return cachedData;
       }
+
+      // 如果是认证错误，清除认证数据
+      if (e.toString().contains('401') ||
+          e.toString().contains('未授权') ||
+          e.toString().contains('token')) {
+        await clearAuthData();
+      }
+
       rethrow;
     }
   }
 
-  /// 添加歌曲到"我喜欢"歌单
-  Future<bool> addToFavorite(PlaySongInfo songInfo) async {
-    print('准备添加歌曲到"我喜欢"歌单: ${songInfo.title}');
-    print(
-        '歌曲完整信息: hash=${songInfo.hash}, title=${songInfo.title}, artist=${songInfo.artist}, mixsongid=${songInfo.mixsongid}');
+  // 实际从服务器获取歌单数据
+  Future<Map<String, dynamic>> _fetchUserPlaylists() async {
+    int retryCount = 0;
+    while (retryCount < _maxRetries) {
+      try {
+        final token = _prefs.getString('auth_token');
+        if (token == null) {
+          throw Exception('未登录或token已失效');
+        }
 
-    final listId = getFavoritePlaylistIdFromCache();
-    if (listId == null) {
-      // 如果缓存中没有，尝试重新获取并缓存
-      await _cacheFavoritePlaylistId();
-      final newListId = getFavoritePlaylistIdFromCache();
-      if (newListId == null) {
-        throw Exception('未找到"我喜欢"歌单');
+        final response = await _dio.get('/user/playlist');
+        print('原始歌单响应: ${response.data}');
+
+        if (response.data['status'] == 1) {
+          // 确保返回的响应格式是正确的
+          final Map<String, dynamic> responseData = response.data;
+
+          final Map<String, dynamic> cacheData = {
+            'data': responseData,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          };
+
+          // 更新缓存
+          await updateCache(_playlistsCacheKey, cacheData);
+          return responseData;
+        } else {
+          throw Exception(response.data['error_msg'] ?? '获取歌单失败');
+        }
+      } on DioException catch (e) {
+        retryCount++;
+        if (retryCount >= _maxRetries) {
+          throw _handleDioError(e);
+        }
+        // 等待一段时间后重试
+        await Future.delayed(Duration(seconds: retryCount));
+      } catch (e) {
+        retryCount++;
+        if (retryCount >= _maxRetries) {
+          rethrow;
+        }
+        // 等待一段时间后重试
+        await Future.delayed(Duration(seconds: retryCount));
       }
     }
-
-    final songData = <String, dynamic>{
-      'name': songInfo.title,
-      'hash': songInfo.hash,
-      'mixsongid': songInfo.mixsongid ?? '', // 如果为空则使用空字符串
-    };
-
-    print('歌曲信息: $songData');
-    return addSongToPlaylist(listId!, songData);
-  }
-
-  /// 添加歌曲到歌单
-  Future<bool> addSongToPlaylist(
-      String listId, Map<String, dynamic> songData) async {
-    try {
-      print('正在添加歌曲到歌单，歌单ID: $listId, 歌曲数据: $songData');
-
-      // 构建数据字符串：歌名|hash|mixsongid
-      final dataString =
-          '${songData['name']}|${songData['hash']}|${songData['mixsongid']}';
-      print('发送的数据: $dataString');
-
-      final response = await _dio.post(
-        '/playlist/tracks/add',
-        queryParameters: {
-          'listid': listId,
-          'data': dataString,
-        },
-      );
-
-      print('添加歌曲响应: ${response.data}');
-      if (response.data['status'] == 1) {
-        return true;
-      }
-      throw Exception(response.data['error_msg'] ?? '添加歌曲到歌单失败');
-    } on DioException catch (e) {
-      print('添加歌曲到歌单失败: ${e.response?.data}');
-      throw _handleDioError(e);
-    }
+    throw Exception('获取歌单失败，请稍后重试');
   }
 
   /// 获取歌单内的所有歌曲
@@ -434,88 +388,118 @@ class ApiService {
     int pageSize = 30,
   }) async {
     try {
+      print('开始获取歌单曲目，歌单ID: $globalCollectionId, 页码: $page, 每页数量: $pageSize');
+
       final response = await _dio.get(
         '/playlist/track/all',
         queryParameters: {
-          'id': globalCollectionId,
+          'id': globalCollectionId, // 这里的参数名是正确的，但确保传入的是完整的global_collection_id
           'page': page,
           'pagesize': pageSize,
         },
       );
 
+      print('获取歌单曲目响应: ${response.data}');
+
       if (response.data['status'] == 1) {
-        return List<Map<String, dynamic>>.from(response.data['data']['info']);
+        // 检查data字段是否存在
+        if (response.data['data'] == null) {
+          print('响应data字段为空');
+          return [];
+        }
+
+        final data = response.data['data'];
+
+        // 检查songs字段是否存在并为列表（根据API返回的实际格式）
+        if (data['songs'] == null || data['songs'] is! List) {
+          print('响应songs字段为空或不是列表');
+          // 兼容处理：尝试从info字段获取数据
+          if (data['info'] != null && data['info'] is List) {
+            final List<dynamic> infoList = data['info'];
+            print('从info字段获取到歌单曲目，数量: ${infoList.length}');
+            return _processTrackList(infoList);
+          }
+          return [];
+        }
+
+        final List<dynamic> songsList = data['songs'];
+        print('成功获取歌单曲目，数量: ${songsList.length}');
+
+        return _processTrackList(songsList);
       } else {
         throw Exception(response.data['error_msg'] ?? '获取歌单歌曲失败');
       }
     } on DioException catch (e) {
+      print('获取歌单曲目DioException: $e');
       throw _handleDioError(e);
+    } catch (e) {
+      print('获取歌单曲目异常: $e');
+      throw Exception('获取歌单歌曲失败: $e');
     }
+  }
+
+  // 处理曲目列表，提取为单独方法方便复用
+  List<Map<String, dynamic>> _processTrackList(List<dynamic> trackList) {
+    // 将每个元素转换为Map<String, dynamic>
+    return trackList.map((item) {
+      // 确保item是Map类型
+      if (item is Map) {
+        return Map<String, dynamic>.from(item);
+      } else {
+        // 如果不是Map，创建一个包含错误信息的Map
+        print('歌曲项目格式错误: $item');
+        return <String, dynamic>{
+          'hash': '',
+          'title': '格式错误的歌曲',
+          'artist': '未知艺术家',
+          'error': '歌曲数据格式错误'
+        };
+      }
+    }).toList();
   }
 
   /// 获取歌曲播放地址
   /// @param hash 歌曲hash
-  /// @param albumId 歌曲所属专辑ID，可选
-  /// @return 返回歌曲播放URL
+  /// @param albumId 专辑ID
+  /// @return 返回歌曲播放地址
+  /// @throws Exception 当获取失败时抛出异常
   Future<String> getSongUrl(String hash, String albumId) async {
     try {
-      // 构建请求参数
-      final queryParams = {
-        'mid': 1,
+      final response = await _dio.get('/song/url', queryParameters: {
         'hash': hash,
         'album_id': albumId,
-      };
+      });
 
-      // 发送请求
-      final response =
-          await _dio.get('/song/url', queryParameters: queryParams);
       final responseData = response.data;
-
       print('获取到的歌曲URL响应数据: $responseData');
 
-      // 检查状态码
-      if (responseData['status'] != 1) {
-        throw Exception(responseData['error_msg'] ?? '获取歌曲播放地址失败');
+      // 检查歌曲权限状态
+      if (responseData['status'] == 2) {
+        final failProcess = responseData['fail_process'] as List?;
+        if (failProcess?.contains('pkg') == true ||
+            failProcess?.contains('buy') == true) {
+          throw Exception('该歌曲需要购买或者VIP会员才能播放');
+        }
+        throw Exception('无法播放该歌曲，可能是版权限制');
       }
 
-      // 提取URL
-      String? songUrl;
-
-      // 方法1：直接从url数组中获取第一个URL
+      // 首先尝试使用主 URL 列表
       if (responseData['url'] != null &&
           responseData['url'] is List &&
           (responseData['url'] as List).isNotEmpty) {
-        songUrl = (responseData['url'] as List).first.toString();
+        return (responseData['url'] as List).first.toString();
       }
 
-      // 方法2：如果没有找到url数组，尝试从backupUrl获取
-      if (songUrl == null &&
-          responseData['backupUrl'] != null &&
+      // 如果主 URL 列表为空，尝试使用备用 URL 列表
+      if (responseData['backupUrl'] != null &&
           responseData['backupUrl'] is List &&
           (responseData['backupUrl'] as List).isNotEmpty) {
-        songUrl = (responseData['backupUrl'] as List).first.toString();
+        return (responseData['backupUrl'] as List).first.toString();
       }
 
-      // 方法3：如果没有找到url和backupUrl，尝试从data字段中获取
-      if (songUrl == null && responseData['data'] != null) {
-        final data = responseData['data'];
-        if (data is Map && data['url'] != null) {
-          songUrl = data['url'].toString();
-        }
-      }
-
-      // 如果所有方法都失败，抛出异常
-      if (songUrl == null || songUrl.isEmpty) {
-        throw Exception('未找到歌曲播放地址');
-      }
-
-      print('解析到的播放URL: $songUrl');
-      return songUrl;
-    } on DioException catch (e) {
-      print('获取歌曲播放地址失败: ${e.message}');
-      throw _handleDioError(e);
+      throw Exception('无法获取歌曲播放地址');
     } catch (e) {
-      print('处理歌曲播放地址失败: $e');
+      print('获取歌曲URL失败: $e');
       rethrow;
     }
   }
@@ -607,20 +591,20 @@ class ApiService {
     try {
       // 尝试从缓存获取
       if (!forceRefresh) {
-        final cachedData = _getValidCache(_recentSongsCacheKey);
+        final cachedData = getValidCache(_recentSongsCacheKey);
         if (cachedData != null) {
           // 在后台刷新缓存
-          _refreshCacheInBackground(
-              _recentSongsCacheKey, () => _fetchRecentSongs(bq: bq));
+          refreshCacheInBackground(
+              _recentSongsCacheKey, () => fetchRecentSongs(bq: bq));
           return RecentSongsResponse.fromJson(cachedData);
         }
       }
 
       // 从服务器获取新数据
-      return await _fetchRecentSongs(bq: bq);
+      return await fetchRecentSongs(bq: bq);
     } catch (e) {
       // 如果请求失败但有缓存，返回缓存
-      final cachedData = _getValidCache(_recentSongsCacheKey);
+      final cachedData = getValidCache(_recentSongsCacheKey);
       if (cachedData != null) {
         return RecentSongsResponse.fromJson(cachedData);
       }
@@ -629,7 +613,7 @@ class ApiService {
   }
 
   // 从服务器获取最近播放数据
-  Future<RecentSongsResponse> _fetchRecentSongs({String? bq}) async {
+  Future<RecentSongsResponse> fetchRecentSongs({String? bq}) async {
     final queryParams = <String, dynamic>{};
     if (bq != null && bq.isNotEmpty) {
       queryParams['bq'] = bq;
@@ -645,7 +629,7 @@ class ApiService {
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
       // 更新缓存
-      await _updateCache(_recentSongsCacheKey, cacheData);
+      await updateCache(_recentSongsCacheKey, cacheData);
       return RecentSongsResponse.fromJson(response.data);
     } else {
       throw Exception(response.data['error_msg'] ?? '获取最近播放记录失败');
@@ -653,7 +637,7 @@ class ApiService {
   }
 
   // 获取有效的缓存数据
-  Map<String, dynamic>? _getValidCache(String key) {
+  Map<String, dynamic>? getValidCache(String key) {
     try {
       final cachedString = _prefs.getString(key);
       if (cachedString != null) {
@@ -675,7 +659,7 @@ class ApiService {
   }
 
   // 更新缓存
-  Future<void> _updateCache(String key, Map<String, dynamic> data) async {
+  Future<void> updateCache(String key, Map<String, dynamic> data) async {
     try {
       // 确保数据中包含时间戳
       if (!data.containsKey('timestamp')) {
@@ -690,14 +674,20 @@ class ApiService {
   }
 
   // 在后台刷新缓存，带重试机制
-  Future<void> _refreshCacheInBackground(
+  Future<void> refreshCacheInBackground(
       String key, Future<dynamic> Function() fetchData) async {
     Future.delayed(Duration.zero, () async {
       int retryCount = 0;
       while (retryCount < _maxRetries) {
         try {
-          await fetchData();
-          break; // 成功后跳出循环
+          final result = await fetchData();
+          if (result != null) {
+            // 如果操作成功，退出循环
+            print('后台刷新缓存成功: $key');
+            break;
+          }
+          // 如果结果为null，增加重试次数
+          retryCount++;
         } catch (e) {
           retryCount++;
           if (retryCount >= _maxRetries) {
@@ -726,12 +716,12 @@ class ApiService {
         'playlists': {
           'hasCache': playlistsCache != null,
           'timestamp': playlistsCache?['timestamp'],
-          'isValid': _isValidCache(playlistsCache),
+          'isValid': isValidCache(playlistsCache),
         },
         'recentSongs': {
           'hasCache': recentSongsCache != null,
           'timestamp': recentSongsCache?['timestamp'],
-          'isValid': _isValidCache(recentSongsCache),
+          'isValid': isValidCache(recentSongsCache),
         },
       };
     } catch (e) {
@@ -744,7 +734,7 @@ class ApiService {
   }
 
   // 检查缓存是否有效
-  bool _isValidCache(Map<String, dynamic>? cache) {
+  bool isValidCache(Map<String, dynamic>? cache) {
     if (cache == null) return false;
     final timestamp = cache['timestamp'] ?? 0;
     return DateTime.now().millisecondsSinceEpoch - timestamp <
@@ -760,53 +750,9 @@ class ApiService {
   Future<void> clearExpiredCache() async {
     final keys = [_playlistsCacheKey, _recentSongsCacheKey];
     for (final key in keys) {
-      if (_getValidCache(key) == null) {
+      if (getValidCache(key) == null) {
         await clearCache(key);
       }
-    }
-  }
-
-  /// 处理Dio异常
-  /// 将Dio的异常转换为用户友好的错误信息
-  /// @param e Dio异常
-  /// @return 转换后的异常对象
-  Exception _handleDioError(DioException e) {
-    switch (e.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return Exception('网络连接超时，请检查网络');
-
-      case DioExceptionType.badResponse:
-        final statusCode = e.response?.statusCode;
-        final message = e.response?.data['message'] ?? '未知错误';
-        switch (statusCode) {
-          case 400:
-            return Exception('请求参数错误: $message');
-          case 401:
-            return Exception('未授权或登录已过期');
-          case 403:
-            return Exception('没有权限访问');
-          case 404:
-            return Exception('请求的资源不存在');
-          case 500:
-          case 502:
-            return Exception('服务器错误: $message');
-          default:
-            return Exception('请求失败: $message');
-        }
-
-      case DioExceptionType.cancel:
-        return Exception('请求已取消');
-
-      case DioExceptionType.unknown:
-        if (e.error != null) {
-          return Exception('未知错误: ${e.error}');
-        }
-        return Exception('网络错误，请检查网络连接');
-
-      default:
-        return Exception('请求失败，请稍后重试');
     }
   }
 
@@ -816,9 +762,8 @@ class ApiService {
   Future<void> logout() async {
     try {
       await _dio.post('/logout');
-      _clearAuthData();
+      clearAuthData();
     } catch (e) {
-      print('退出登录过程中出错: $e');
       rethrow;
     }
   }
@@ -847,94 +792,48 @@ class ApiService {
       rethrow;
     }
   }
+}
 
-  /// 从歌单删除歌曲
-  Future<bool> removeSongFromPlaylist(String listId, String fileId) async {
-    try {
-      print('正在从歌单删除歌曲，歌单ID: $listId, fileId: $fileId');
+/// 处理Dio异常
+/// 将Dio的异常转换为用户友好的错误信息
+/// @param e Dio异常
+/// @return 转换后的异常对象
+Exception _handleDioError(DioException e) {
+  switch (e.type) {
+    case DioExceptionType.connectionTimeout:
+    case DioExceptionType.sendTimeout:
+    case DioExceptionType.receiveTimeout:
+      return Exception('网络连接超时，请检查网络');
 
-      final response = await _dio.post(
-        '/playlist/tracks/del',
-        queryParameters: {
-          'listid': listId,
-          'fileids': fileId,
-        },
-      );
-
-      print('删除歌曲响应: ${response.data}');
-      if (response.data['status'] == 1) {
-        return true;
+    case DioExceptionType.badResponse:
+      final statusCode = e.response?.statusCode;
+      final message = e.response?.data['message'] ?? '未知错误';
+      switch (statusCode) {
+        case 400:
+          return Exception('请求参数错误: $message');
+        case 401:
+          return Exception('未授权或登录已过期');
+        case 403:
+          return Exception('没有权限访问');
+        case 404:
+          return Exception('请求的资源不存在');
+        case 500:
+        case 502:
+          return Exception('服务器错误: $message');
+        default:
+          return Exception('请求失败: $message');
       }
-      throw Exception(response.data['error_msg'] ?? '从歌单删除歌曲失败');
-    } on DioException catch (e) {
-      print('从歌单删除歌曲失败: ${e.response?.data}');
-      throw _handleDioError(e);
-    }
-  }
 
-  // 1. 获取MV列表
-  Future<List<MvInfo>> getMVList(String albumAudioId) async {
-    try {
-      final response = await _dio.get('/kmr/audio/mv', queryParameters: {
-        'album_audio_id': albumAudioId,
-      });
+    case DioExceptionType.cancel:
+      return Exception('请求已取消');
 
-      if (response.data['status'] == 1) {
-        // 添加空值和类型检查
-        final data = response.data['data'];
-        if (data == null || data is! List || data.isEmpty) {
-          print('MV列表数据为空或格式不正确');
-          return [];
-        }
-
-        final mvData = data[0];
-        if (mvData == null || mvData is! List) {
-          print('MV列表数据格式不正确');
-          return [];
-        }
-
-        return mvData.map((json) => MvInfo.fromJson(json)).toList();
+    case DioExceptionType.unknown:
+      if (e.error != null) {
+        return Exception('未知错误: ${e.error}');
       }
-      print('获取MV列表失败: ${response.data}');
-      return []; // 返回空列表而不是抛出异常
-    } catch (e) {
-      print('获取MV列表异常: $e');
-      return []; // 出现异常时返回空列表
-    }
-  }
+      return Exception('网络错误，请检查网络连接');
 
-  // 2. 获取视频详细信息
-  Future<String?> getVideoHash(int videoId) async {
-    final response = await _dio.get('/video/detail', queryParameters: {
-      'id': videoId,
-    });
-    // print(response.data['data']['hd_hash_265']);
-    if (response.data['status'] == 1) {
-      // 优先使用FHD版本，如果没有则使用HD版本
-      final String? fhdHash = response.data['data'][0]['fhd_hash_265'];
-      final String? hdHash = response.data['data'][0]['hd_hash_265'];
-      return fhdHash ?? hdHash;
-    }
-    throw Exception('获取视频详情失败');
-  }
-
-  // 3. 获取视频播放地址
-  Future<String> getVideoUrl(String videoHash) async {
-    final response = await _dio.get('/video/url', queryParameters: {
-      'hash': videoHash,
-    });
-
-    if (response.data['status'] == 1) {
-      final data = response.data['data'][videoHash.toLowerCase()];
-      // 优先使用主下载地址，如果失败可以使用备用地址
-      return data['downurl'] ?? data['backupdownurl'][0];
-    }
-    throw Exception('获取视频地址失败');
-  }
-
-  // 4. 便捷方法：一次性获取视频播放地址
-  Future<String> getPlayableVideoUrl(int videoId) async {
-    final videoHash = await getVideoHash(videoId);
-    return await getVideoUrl(videoHash!);
+    default:
+      return Exception('请求失败，请稍后重试');
   }
 }
