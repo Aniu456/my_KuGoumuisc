@@ -230,8 +230,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               rotationAnimation: _controller,
                             ),
                           ),
-
-                          // 展示两行歌词并添加指示器
                           MiniLyricWidget(
                             lyrics: lyrics,
                             currentSong: currentSong,
