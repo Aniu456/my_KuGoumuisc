@@ -19,6 +19,7 @@ class LyricWidget extends ConsumerStatefulWidget {
   final PlaySongInfo currentSong;
   final Color accentColor;
   final Function onClose;
+  final Duration position; // 添加当前播放位置
 
   const LyricWidget({
     super.key,
@@ -27,6 +28,7 @@ class LyricWidget extends ConsumerStatefulWidget {
     required this.currentSong,
     required this.accentColor,
     required this.onClose,
+    required this.position,
   });
 
   @override
@@ -39,6 +41,9 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
   int _lastLyricIndex = -1;
   bool _userScrolling = false;
   Timer? _scrollResumeTimer;
+  Timer? _autoScrollCheckTimer; // 定期检查自动滚动状态
+  String? _lastSongId; // 记录上一首歌曲的ID
+  Duration _lastPosition = Duration.zero; // 记录上次滚动时的播放位置
 
   // 歌词行高度参数
   static const double _baseLineHeight = 60.0; // 基础行高估计值
@@ -51,6 +56,7 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
   @override
   void dispose() {
     _scrollResumeTimer?.cancel();
+    _autoScrollCheckTimer?.cancel();
     _lyricsScrollController.removeListener(_onScrollChanged);
     _lyricsScrollController.dispose();
     super.dispose();
@@ -64,19 +70,35 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
     _lyricsScrollController.addListener(_onScrollChanged);
 
     // 初始化完成后滚动到当前歌词
-    // 使用两个延迟来确保视图已经完全构建
+    // 使用延迟来确保视图已经完全构建
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 第一次延迟确保 ListView 已经渲染
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           // 测量行高
           _measureLineHeights();
+          // 立即滚动到当前歌词
+          _scrollToCurrentLyric(immediate: true);
 
-          // 第二次延迟确保测量完成
-          Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted) {
-              // 使用jumpTo而不是animateTo来避免动画问题
-              _scrollToCurrentLyric(immediate: true);
+          // 设置定期器来检查滚动状态，确保歌词始终能滚动
+          _autoScrollCheckTimer?.cancel();
+          _autoScrollCheckTimer =
+              Timer.periodic(const Duration(milliseconds: 100), (timer) {
+            // 更高频率的检查
+            if (mounted && !_userScrolling) {
+              // 如果当前索引与上次不同，或者位置变化，则滚动
+              bool indexChanged = widget.currentIndex != _lastLyricIndex;
+              bool positionChanged = (_lastPosition.inMilliseconds -
+                          widget.position.inMilliseconds)
+                      .abs() >
+                  50; // 降低阈值，提高敏感度
+
+              if (indexChanged || positionChanged) {
+                // 不使用setState，直接滚动，减少重建开销
+                _lastLyricIndex = widget.currentIndex;
+                _lastPosition = widget.position;
+                _scrollToCurrentLyric(immediate: positionChanged);
+              }
             }
           });
         }
@@ -93,7 +115,8 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
     } else if (_userScrolling) {
       // 用户滚动结束后，设置延迟恢复自动滚动
       _scrollResumeTimer?.cancel();
-      _scrollResumeTimer = Timer(const Duration(seconds: 2), () {
+      _scrollResumeTimer = Timer(const Duration(milliseconds: 500), () {
+        // 缩短恢复时间
         if (mounted) {
           setState(() {
             _userScrolling = false;
@@ -152,14 +175,37 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
       final double minScroll = 0.0;
       final double safePosition = targetPosition.clamp(minScroll, maxScroll);
 
+      // 获取当前滚动位置
+      final double currentPosition = _lyricsScrollController.position.pixels;
+
+      // 如果当前位置与目标位置差距很小，则不需要滚动
+      // 增加容差值，避免微小的滚动调整
+      if (!immediate && (safePosition - currentPosition).abs() < 10) {
+        return;
+      }
+
+      // 计算与目标位置的距离
+      final double distance = (safePosition - currentPosition).abs();
+
+      // 根据距离调整动画时间，距离越远时间越长，但有上限
+      final int animationDuration = immediate
+          ? 0
+          : distance < 50
+              ? 200
+              : distance < 200
+                  ? 300
+                  : distance < 500
+                      ? 400
+                      : 500;
+
       // 执行滚动动画，使用更自然的曲线
-      if (immediate) {
+      if (immediate || animationDuration == 0) {
         // 对于即时滚动，使用jumpTo而不是animateTo
         _lyricsScrollController.jumpTo(safePosition);
       } else {
         _lyricsScrollController.animateTo(
           safePosition,
-          duration: const Duration(milliseconds: 400),
+          duration: Duration(milliseconds: animationDuration),
           curve: Curves.easeOutQuart,
         );
       }
@@ -211,22 +257,57 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
 
   @override
   Widget build(BuildContext context) {
-    // 当歌词索引变化时滚动到当前歌词
-    if (widget.currentIndex != _lastLyricIndex &&
+    // 检测歌曲变化
+    bool songChanged = _lastSongId != widget.currentSong.hash;
+    if (songChanged) {
+      // 歌曲变化时重置状态
+      _lastSongId = widget.currentSong.hash;
+      _lastLyricIndex = -1;
+      _lastPosition = Duration.zero;
+
+      // 重置滚动位置
+      if (_lyricsScrollController.hasClients) {
+        _lyricsScrollController.jumpTo(0);
+      }
+
+      // 在下一帧执行滚动，确保布局已经完成
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _measureLineHeights();
+          _scrollToCurrentLyric(immediate: true);
+        }
+      });
+    }
+
+    // 检测歌词索引或播放位置变化
+    bool indexChanged = widget.currentIndex != _lastLyricIndex;
+    bool positionChanged =
+        (widget.position.inMilliseconds - _lastPosition.inMilliseconds).abs() >
+            100; // 降低位置变化的阈值，使其更敏感
+
+    // 如果歌词索引或位置变化，则滚动到当前歌词
+    if ((indexChanged || positionChanged) &&
         widget.currentIndex >= 0 &&
         widget.lyrics.isNotEmpty) {
       _lastLyricIndex = widget.currentIndex;
+      _lastPosition = widget.position;
 
-      // 使用微任务而不是延迟，提高响应速度
-      Future.microtask(() {
-        if (mounted) {
-          // 先测量行高，然后滚动
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 如果不是用户滚动，则自动滚动到当前歌词
+      if (!_userScrolling) {
+        // 在下一帧执行滚动，确保布局已经完成
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
             _measureLineHeights();
-            _scrollToCurrentLyric();
-          });
-        }
-      });
+            // 如果是索引变化或者位置变化很大，则立即滚动
+            _scrollToCurrentLyric(
+                immediate: positionChanged &&
+                    (widget.position.inMilliseconds -
+                                _lastPosition.inMilliseconds)
+                            .abs() >
+                        1000);
+          }
+        });
+      }
     }
 
     return GestureDetector(
@@ -264,9 +345,12 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
                     key: _listViewKey,
                     controller: _lyricsScrollController,
                     itemCount: widget.lyrics.length,
-                    // 添加足够的内边距使歌词可以在屏幕上下滚动到指定位置
-                    padding: EdgeInsets.symmetric(
-                      vertical: MediaQuery.of(context).size.height * 0.45,
+                    // 添加合适的内边距使歌词可以在屏幕上下滚动到指定位置
+                    padding: EdgeInsets.only(
+                      // 上方留出屏幕高度的5%的空间
+                      top: MediaQuery.of(context).size.height * 0.05,
+                      // 下方留出屏幕高度的5%的空间
+                      bottom: MediaQuery.of(context).size.height * 0.05,
                     ),
                     itemBuilder: (context, index) {
                       final isCurrentLine = index == widget.currentIndex;
@@ -390,176 +474,4 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
       ),
     );
   }
-}
-
-// 获取当前应该显示的歌词索引
-int getCurrentLyricIndex(List<LyricLine> lyrics, Duration position) {
-  if (lyrics.isEmpty) return -1;
-
-  // 找到最后一个时间小于当前位置的歌词
-  for (int i = lyrics.length - 1; i >= 0; i--) {
-    if (lyrics[i].time <= position) {
-      // 添加一个小容差，避免在歌词边界处频繁切换
-      final bool isLastLine = i == lyrics.length - 1;
-      if (isLastLine) {
-        return i;
-      }
-
-      // 检查是否接近下一行的时间点
-      final nextLineTime = lyrics[i + 1].time;
-      final currentLineTime = lyrics[i].time;
-      final timeDifference =
-          nextLineTime.inMilliseconds - currentLineTime.inMilliseconds;
-      final threshold = timeDifference * 0.1; // 10%的容差
-
-      // 如果非常接近下一行（在10%容差范围内），则提前显示下一行
-      if (position.inMilliseconds > nextLineTime.inMilliseconds - threshold) {
-        return i + 1;
-      }
-
-      return i;
-    }
-  }
-
-  return -1;
-}
-
-//专辑下方歌词
-class MiniLyricWidget extends StatelessWidget {
-  final List<LyricLine> lyrics;
-  final int currentIndex;
-  final Duration position;
-  final Color accentColor;
-  final VoidCallback onTap;
-
-  const MiniLyricWidget({
-    super.key,
-    required this.lyrics,
-    required this.currentIndex,
-    required this.position,
-    required this.accentColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // 如果没有歌词，显示简洁提示
-    if (lyrics.isEmpty) {
-      return GestureDetector(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            '暂无歌词，点击查看',
-            style: TextStyle(
-              color: accentColor,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
-    }
-
-    // 获取当前和接下来两行歌词
-    String currentLyric = currentIndex >= 0 && currentIndex < lyrics.length
-        ? lyrics[currentIndex].text
-        : '';
-
-    String nextLyric = currentIndex >= 0 && currentIndex + 1 < lyrics.length
-        ? lyrics[currentIndex + 1].text
-        : '';
-
-    String thirdLyric = currentIndex >= 0 && currentIndex + 2 < lyrics.length
-        ? lyrics[currentIndex + 2].text
-        : '';
-
-    // 不需要手动限制歌词长度，使用 TextOverflow.ellipsis 处理溢出
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: Column(
-          children: [
-            // 当前歌词
-            Text(
-              currentLyric,
-              style: TextStyle(
-                color: accentColor,
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-
-            // 下一行歌词
-            Text(
-              nextLyric,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-
-            // 第三行歌词
-            Text(
-              thirdLyric,
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 12,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// 解析LRC格式歌词
-List<LyricLine> parseLyrics(String? lyricsText) {
-  if (lyricsText == null || lyricsText.isEmpty) {
-    return [];
-  }
-
-  final List<LyricLine> lyrics = [];
-  final regExp = RegExp(r'\[(\d{2}):(\d{2})\.(\d{2})\](.*)');
-
-  for (var line in lyricsText.split('\n')) {
-    if (line.trim().isEmpty) continue;
-
-    final matches = regExp.allMatches(line);
-    for (var match in matches) {
-      if (match.groupCount >= 4) {
-        final minutes = int.parse(match.group(1)!);
-        final seconds = int.parse(match.group(2)!);
-        final milliseconds = int.parse(match.group(3)!) * 10; // 转换为毫秒
-        final text = match.group(4)!.trim();
-
-        final time = Duration(
-          minutes: minutes,
-          seconds: seconds,
-          milliseconds: milliseconds,
-        );
-
-        lyrics.add(LyricLine(time, text));
-      }
-    }
-  }
-
-  // 按时间排序
-  lyrics.sort((a, b) => a.time.compareTo(b.time));
-  return lyrics;
 }

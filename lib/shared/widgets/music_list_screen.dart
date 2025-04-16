@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/play_song_info.dart';
 import '../../core/providers/provider_manager.dart';
+import '../../services/player_service.dart';
 import '../../utils/image_utils.dart';
-import 'package:go_router/go_router.dart';
-import 'player_page.dart';
+import '../../features/player/player_page.dart';
+import '../widgets/mini_player.dart';
 
 /// 音乐列表页面，用于显示歌单中的歌曲
 class MusicListScreen extends ConsumerStatefulWidget {
@@ -31,8 +33,14 @@ class MusicListScreen extends ConsumerStatefulWidget {
 }
 
 class _MusicListScreenState extends ConsumerState<MusicListScreen> {
-  /// 用于存储歌曲列表的 Future
-  late Future<List<PlaySongInfo>> _songsFuture;
+  final List<PlaySongInfo> _songs = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentPage = 1;
+  dynamic _error;
+  final int _pageSize = 30;
 
   @override
   void initState() {
@@ -41,166 +49,330 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
     print(
         'MusicListScreen初始化，歌单ID: ${widget.playlistId}, 歌单名称: ${widget.title}');
 
-    /// 根据是否提供了 playlistId 来决定如何加载歌曲
     if (widget.playlistId != null) {
-      /// 如果提供了 playlistId，则从 API 获取歌单歌曲
-      _songsFuture = _loadSongsFromPlaylist();
-    } else {
-      /// 如果直接提供了 playlist，则使用传入的列表
-      _songsFuture = Future.value(widget.playlist!);
+      _loadInitialSongs();
+      _scrollController.addListener(_onScroll);
+    } else if (widget.playlist != null) {
+      setState(() {
+        _songs.addAll(widget.playlist!);
+        _hasMore = false;
+      });
     }
   }
 
-  /// 从API加载歌单歌曲的方法
-  Future<List<PlaySongInfo>> _loadSongsFromPlaylist() async {
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        _hasMore &&
+        widget.playlistId != null) {
+      _loadMoreSongs();
+    }
+  }
+
+  /// 加载初始歌曲 (第一页)
+  Future<void> _loadInitialSongs() async {
+    if (_isLoading) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _songs.clear();
+      _currentPage = 1;
+      _hasMore = true;
+    });
+
     try {
       print('开始加载歌单: ${widget.title}, ID: ${widget.playlistId}');
-
-      if (widget.playlistId == null || widget.playlistId!.isEmpty) {
-        print('歌单ID为空');
-        throw Exception('歌单ID无效');
-      }
-
-      // 获取歌曲数据
-      final tracks = await ref
-          .read(ProviderManager.apiServiceProvider)
-          .getPlaylistTracks(widget.playlistId!);
-
-      print('获取到${tracks.length}首歌曲');
-
-      if (tracks.isEmpty) {
-        return [];
-      }
-
-      // 将每个歌曲数据转换为PlaySongInfo对象
-      return tracks.map((map) {
-        try {
-          return PlaySongInfo.fromJson(map);
-        } catch (e) {
-          print('解析歌曲数据失败: $e, 数据: $map');
-          // 返回一个带有错误信息的占位对象
-          return PlaySongInfo(
-            hash: map['hash'] ?? '',
-            title: map['title'] ?? map['songName'] ?? '未知歌曲',
-            artist: map['artist'] ?? map['singerName'] ?? '未知艺术家',
-          );
-        }
-      }).toList();
+      print(
+          '开始加载初始歌单: ${widget.title}, ID: ${widget.playlistId}, Page: $_currentPage');
+      final newSongs = await _fetchSongs(_currentPage);
+      setState(() {
+        _songs.addAll(newSongs);
+        _hasMore = newSongs.length == _pageSize;
+        _isLoading = false;
+      });
     } catch (e) {
-      print('加载歌单歌曲失败: $e');
-      // 在这里捕获异常并返回空列表，让UI显示没有歌曲
-      throw Exception('获取歌单歌曲失败: $e');
+      print('加载初始歌单失败: $e');
+      setState(() {
+        _error = e;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMoreSongs() async {
+    if (_isLoadingMore || !_hasMore) return;
+    setState(() {
+      _isLoadingMore = true;
+      _error = null;
+    });
+    _currentPage++;
+    print(
+        '开始加载更多歌单: ${widget.title}, ID: ${widget.playlistId}, Page: $_currentPage');
+    try {
+      final newSongs = await _fetchSongs(_currentPage);
+      setState(() {
+        _songs.addAll(newSongs);
+        _hasMore = newSongs.length == _pageSize;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      print('加载更多歌单失败: $e');
+      setState(() {
+        _isLoadingMore = false;
+        _currentPage--;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载更多失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 从API获取歌曲数据 (支持分页)
+  Future<List<PlaySongInfo>> _fetchSongs(int page) async {
+    if (widget.playlistId == null || widget.playlistId!.isEmpty) {
+      print('歌单ID为空');
+      throw Exception('歌单ID无效');
+    }
+
+    final tracks = await ref
+        .read(ProviderManager.apiServiceProvider)
+        .getPlaylistTracks(widget.playlistId!, page: page, pageSize: _pageSize);
+
+    print('获取到 ${tracks.length} 首歌曲');
+    print('获取到 ${tracks.length} 首歌曲 for page $page');
+
+    if (tracks.isEmpty) {
+      return [];
+    }
+
+    return tracks.map((map) {
+      try {
+        return PlaySongInfo.fromJson(map);
+      } catch (e) {
+        print('解析歌曲数据失败: $e, 数据: $map');
+        return PlaySongInfo(
+          hash: map['hash'] ?? '',
+          title: map['title'] ?? map['songName'] ?? '未知歌曲',
+          artist: map['artist'] ?? map['singerName'] ?? '未知艺术家',
+        );
+      }
+    }).toList();
+  }
+
+  /// 下拉刷新处理
+  Future<void> _handleRefresh() async {
+    if (widget.playlistId != null) {
+      await _loadInitialSongs();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    /// 监听播放器服务
     final playerService = ref.watch(ProviderManager.playerServiceProvider);
+    final currentPlayingSongHash = playerService.currentSongInfo?.hash;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
+        elevation: 0, // 去掉阴影
+        centerTitle: true, // 标题居中
       ),
+      body: Column(
+        children: [
+          // 歌单列表（使用Expanded确保列表可以填充除MiniPlayer外的空间）
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _handleRefresh,
+              child: _buildBody(playerService, currentPlayingSongHash),
+            ),
+          ),
+          // 底部迷你播放器
+          const MiniPlayer(),
+        ],
+      ),
+    );
+  }
 
-      /// 使用 FutureBuilder 来处理异步加载的歌曲列表
-      body: FutureBuilder<List<PlaySongInfo>>(
-        future: _songsFuture,
-        builder: (context, snapshot) {
-          /// 加载中显示 CircularProgressIndicator
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+  Widget _buildBody(
+      PlayerService playerService, String? currentPlayingSongHash) {
+    if (_isLoading && _songs.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-          /// 加载失败显示错误信息
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    '加载失败: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        if (widget.playlistId != null) {
-                          _songsFuture = _loadSongsFromPlaylist();
-                        }
-                      });
-                    },
-                    child: const Text('重试'),
-                  ),
-                ],
-              ),
+    if (_error != null && _songs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              '加载失败: $_error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadInitialSongs,
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_songs.isEmpty) {
+      return const Center(child: Text('暂无歌曲'));
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: _songs.length +
+          (_isLoadingMore ? 1 : 0) +
+          (!_hasMore && widget.playlistId != null && !_isLoadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        // 处理加载更多和没有更多的情况
+        if (index == _songs.length) {
+          if (_isLoadingMore) {
+            return const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2.0)),
             );
+          } else if (!_hasMore && widget.playlistId != null) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20.0),
+              child: Center(
+                  child: Text('--- 没有更多了 ---',
+                      style: TextStyle(color: Colors.grey))),
+            );
+          } else {
+            return const SizedBox.shrink();
           }
+        }
 
-          /// 加载成功获取歌曲列表
-          final songs = snapshot.data ?? [];
+        final song = _songs[index];
+        final isPlaying = currentPlayingSongHash != null &&
+            song.hash == currentPlayingSongHash;
 
-          if (songs.isEmpty) {
-            return const Center(child: Text('暂无歌曲'));
-          }
-
-          /// 使用 ListView.builder 显示歌曲列表
-          return ListView.builder(
-            itemCount: songs.length,
-            itemBuilder: (context, index) {
-              final song = songs[index];
-              return ListTile(
-                title: Text(song.title),
-                subtitle: Text(song.artist),
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  clipBehavior: Clip.antiAlias,
+        return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            decoration: BoxDecoration(
+              color: isPlaying
+                  ? Theme.of(context).primaryColor.withOpacity(0.05)
+                  : null,
+              borderRadius: BorderRadius.circular(12.0),
+            ),
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  color: Colors.grey[300],
                   child: song.cover != null && song.cover!.isNotEmpty
                       ? ImageUtils.createCachedImage(
                           ImageUtils.getThumbnailUrl(song.cover),
                           fit: BoxFit.cover,
+                          width: 50,
+                          height: 50,
                         )
-                      : const Icon(Icons.music_note, color: Colors.white),
-                ),
-
-                /// 点击歌曲播放
-                onTap: () async {
-                  try {
-                    // 准备播放列表
-                    playerService.preparePlaylist(songs, index);
-                    // 播放当前歌曲
-                    await playerService.play(song);
-                    // 导航到播放器页面
-                    if (mounted) {
-                      // 使用更简单的导航方法，避免复杂的条件
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const PlayerPage(),
+                      : Center(
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500),
+                          ),
                         ),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('播放失败: $e')),
-                      );
-                    }
+                ),
+              ),
+              title: Text(
+                song.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isPlaying ? Theme.of(context).primaryColor : null,
+                  fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              subtitle: Text(
+                song.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isPlaying
+                      ? Theme.of(context).primaryColor.withOpacity(0.8)
+                      : Colors.grey[600],
+                  fontSize: 12.0,
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isPlaying)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0, vertical: 2.0),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4.0),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.volume_up,
+                              color: Theme.of(context).primaryColor,
+                              size: 16.0),
+                          const SizedBox(width: 4.0),
+                          Text(
+                            '正在播放',
+                            style: TextStyle(
+                              color: Theme.of(context).primaryColor,
+                              fontSize: 10.0,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(width: 8.0),
+                  Icon(Icons.more_vert, color: Colors.grey[400], size: 20.0),
+                ],
+              ),
+              onTap: () async {
+                try {
+                  playerService.preparePlaylist(_songs, index);
+                  await playerService.play(song);
+                  if (mounted) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const PlayerPage(),
+                      ),
+                    );
                   }
-                },
-              );
-            },
-          );
-        },
-      ),
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('播放失败: $e')),
+                    );
+                  }
+                }
+              },
+            ));
+      },
     );
   }
 }

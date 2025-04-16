@@ -311,6 +311,9 @@ class PlayerService extends ChangeNotifier {
   Future<void> seek(Duration position) async {
     if (_audioPlayer.audioSource != null) {
       await _audioPlayer.seek(position);
+      // 手动更新位置并通知监听器，确保 UI 立即响应
+      _position = position;
+      notifyListeners();
     }
   }
 

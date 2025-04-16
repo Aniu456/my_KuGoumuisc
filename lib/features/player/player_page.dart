@@ -8,6 +8,8 @@ import '../../services/player_service.dart';
 import '../../utils/image_utils.dart';
 import 'album_cover.dart';
 import 'lyric_widget.dart';
+import 'lyric_utils.dart'; // Added import
+import 'mini_lyric_widget.dart'; // Added import
 import 'next_song_card.dart';
 import 'player_controls.dart';
 
@@ -195,6 +197,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         currentIndex: currentLyricIndex,
                         currentSong: currentSong,
                         accentColor: buttonColor,
+                        position: position, // 添加当前播放位置
                         onClose: () {
                           setState(() {
                             _showLyrics = false;
@@ -218,7 +221,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                           // 展示两行歌词并添加指示器
                           MiniLyricWidget(
                             lyrics: lyrics,
-                            currentIndex: currentLyricIndex,
+                            currentSong: currentSong,
                             position: position,
                             accentColor: buttonColor,
                             onTap: () {
