@@ -457,9 +457,9 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(
-                    '下滑关闭歌词',
+                    '按住下滑关闭歌词',
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 12,

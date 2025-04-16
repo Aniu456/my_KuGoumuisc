@@ -120,6 +120,18 @@ class PlayerService extends ChangeNotifier {
 
       // 标记当前正在尝试播放的歌曲
       _currentSongInfo = songInfo;
+
+      // 如果歌曲在播放列表中，更新当前索引
+      if (_playlist.isNotEmpty && _currentIndex == -1) {
+        // 如果当前索引无效，尝试在播放列表中查找歌曲
+        for (int i = 0; i < _playlist.length; i++) {
+          if (_playlist[i].hash == songInfo.hash) {
+            _currentIndex = i;
+            break;
+          }
+        }
+      }
+
       notifyListeners();
 
       // 1. 直接播放网络流 (暂时禁用缓存功能)
@@ -328,6 +340,32 @@ class PlayerService extends ChangeNotifier {
   void preparePlaylist(List<PlaySongInfo> songs, int initialIndex) {
     _playlist = List.from(songs);
     _currentIndex = initialIndex;
+    notifyListeners();
+  }
+
+  // 更新当前播放索引
+  void updateCurrentIndex(int index) {
+    if (index >= 0 && index < _playlist.length) {
+      _currentIndex = index;
+      notifyListeners();
+    }
+  }
+
+  // 清空播放列表
+  void clearPlaylist() {
+    // 停止当前播放
+    _audioPlayer.stop();
+
+    // 清空列表和相关状态
+    _playlist = [];
+    _currentIndex = -1;
+    _currentSongInfo = null;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _lyrics = null;
+    _isPlaying = false;
+
+    // 通知监听器
     notifyListeners();
   }
 

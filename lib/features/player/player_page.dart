@@ -25,6 +25,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   late AnimationController _controller;
   bool _showLyrics = false; // 控制是否显示歌词
   Color _dominantColor = Colors.pink; // 专辑封面的主色调，默认为粉色
+  String? _lastSongHash; // 记录上一首歌曲的hash，用于检测歌曲变化
 
   @override
   void initState() {
@@ -87,6 +88,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final duration = playerService.duration;
     final lyricsText = playerService.lyrics;
 
+    // 检测歌曲变化，如果变化了就更新主色调
+    if (currentSong != null && currentSong.hash != _lastSongHash) {
+      _lastSongHash = currentSong.hash;
+      // 在下一帧更新主色调，避免在build过程中调用setState
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _updateDominantColor();
+      });
+    }
+
     // 解析歌词
     final lyrics = parseLyrics(lyricsText);
     final currentLyricIndex = getCurrentLyricIndex(lyrics, position);
@@ -105,9 +115,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
     // 如果主色调太暗或接近白色，则使用默认粉色
     Color buttonColor = _dominantColor;
-    int colorBrightness =
-        (_dominantColor.red + _dominantColor.green + _dominantColor.blue) ~/ 3;
-    if (colorBrightness < 30 || colorBrightness > 230) {
+    // 计算亮度，使用HSL模型的L值
+    final HSLColor hslColor = HSLColor.fromColor(_dominantColor);
+    final double brightness = hslColor.lightness;
+
+    // 如果太暗或太亮，使用默认粉色
+    if (brightness < 0.1 || brightness > 0.9) {
       buttonColor = Colors.pink;
     }
 

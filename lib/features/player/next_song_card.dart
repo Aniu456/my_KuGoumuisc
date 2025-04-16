@@ -99,14 +99,16 @@ class NextSongCard extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Text(
-                        _getArtistName(nextSongInfo.title),
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 13,
+                      Expanded(
+                        child: Text(
+                          _getArtistName(nextSongInfo.title),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       if (nextSongInfo.duration != null)
                         Text(

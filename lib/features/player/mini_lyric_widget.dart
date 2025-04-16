@@ -4,7 +4,8 @@ import 'lyric_utils.dart'; // Import utility functions
 import 'lyric_widget.dart'; // Import LyricLine
 import '../../data/models/play_song_info.dart';
 
-/// Album bottom lyrics display widget
+/// Album bottom lyrics display widget showing three lines of lyrics
+/// Each line can display up to two lines of text with ellipsis for overflow
 class MiniLyricWidget extends ConsumerWidget {
   final List<LyricLine> lyrics;
   final Duration position;
@@ -23,10 +24,8 @@ class MiniLyricWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Determine the currently playing lyric line index
     final currentIndex = getCurrentLyricIndex(lyrics, position);
 
-    // Get the current and next lyric lines
     String currentLyric = '';
     String nextLyric = '';
 
@@ -48,17 +47,18 @@ class MiniLyricWidget extends ConsumerWidget {
     return GestureDetector(
       onTap: onTap, // Allow tapping to potentially open full lyrics
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        constraints: const BoxConstraints(minHeight: 60), // Ensure minimum height
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
+        constraints: const BoxConstraints(
+            minHeight:
+                100), // Ensure minimum height for three lines with 2 lines each
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisSize: MainAxisSize.min, // Take minimum vertical space
           children: [
-            // Current lyric line (highlighted)
             Text(
               currentLyric,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -74,16 +74,16 @@ class MiniLyricWidget extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 4.0), // Spacing between lines
+            const SizedBox(height: 6.0), // Increased spacing between lines
             // Next lyric line (dimmed)
             Text(
               nextLyric,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14.0,
-                color: Colors.white.withOpacity(0.7),
+                fontSize: 16.0,
+                color: Colors.white.withAlpha(179), // 0.7 opacity (179/255)
                 shadows: const [
                   Shadow(
                     offset: Offset(0.5, 0.5),

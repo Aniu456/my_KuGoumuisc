@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/provider_manager.dart';
 import '../../services/player_service.dart';
+import 'playlist_view.dart';
 
 class PlayerControls extends ConsumerWidget {
   final Color accentColor;
@@ -53,7 +54,7 @@ class PlayerControls extends ConsumerWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: accentColor.withOpacity(0.4),
+                  color: accentColor.withAlpha(102), // 0.4 opacity (102/255)
                   blurRadius: 15,
                   spreadRadius: 2,
                   offset: const Offset(0, 5),
@@ -95,7 +96,7 @@ class PlayerControls extends ConsumerWidget {
             iconSize: 24,
             color: Colors.grey[700],
             onPressed: () {
-              // TODO: 实现播放列表查看
+              _showPlaylistBottomSheet(context, accentColor);
             },
           ),
         ],
@@ -119,7 +120,7 @@ class PlayerControls extends ConsumerWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.grey.withAlpha(51), // 0.2 opacity (51/255)
             blurRadius: 8,
             spreadRadius: 1,
             offset: const Offset(0, 2),
@@ -147,6 +148,19 @@ class PlayerControls extends ConsumerWidget {
       case PlayMode.sequence:
         return Icons.arrow_forward;
     }
+  }
+
+  // 显示播放列表底部弹窗
+  void _showPlaylistBottomSheet(BuildContext context, Color accentColor) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => PlaylistView(
+        accentColor: accentColor,
+        onClose: () => Navigator.pop(context),
+      ),
+    );
   }
 }
 
@@ -258,13 +272,13 @@ class PlayerControlSection extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withOpacity(0.7),
+            Colors.white.withAlpha(179), // 0.7 opacity (179/255)
             Colors.grey.shade100,
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.12),
+            color: Colors.grey.withAlpha(31), // 0.12 opacity (31/255)
             blurRadius: 15,
             offset: const Offset(0, -3),
           ),
