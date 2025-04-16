@@ -224,6 +224,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             onTap: () {
                               setState(() {
                                 _showLyrics = true;
+                                // 给歌词组件一个小延迟来确保它正确初始化
+                                Future.delayed(const Duration(milliseconds: 50),
+                                    () {
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
+                                });
                               });
                             },
                           ),
