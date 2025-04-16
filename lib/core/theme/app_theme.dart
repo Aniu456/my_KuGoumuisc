@@ -13,7 +13,7 @@ class AppTheme {
     /// 使用种子颜色创建颜色方案
     colorScheme: ColorScheme.fromSeed(
       /// 种子颜色为深紫色
-      seedColor: const Color.fromARGB(255, 41, 164, 195),
+      seedColor: Colors.deepPurple,
 
       /// 颜色方案的亮度为亮色
       brightness: Brightness.light,
