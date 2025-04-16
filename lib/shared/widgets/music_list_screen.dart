@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/play_song_info.dart';
 import '../../core/providers/provider_manager.dart';
+import '../../hooks/getTitle_ArtistName.dart';
 import '../../services/player_service.dart';
 import '../../utils/image_utils.dart';
 import '../../features/player/player_page.dart';
@@ -46,9 +47,6 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
   void initState() {
     super.initState();
 
-    print(
-        'MusicListScreen初始化，歌单ID: ${widget.playlistId}, 歌单名称: ${widget.title}');
-
     if (widget.playlistId != null) {
       _loadInitialSongs();
       _scrollController.addListener(_onScroll);
@@ -89,9 +87,6 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
     });
 
     try {
-      print('开始加载歌单: ${widget.title}, ID: ${widget.playlistId}');
-      print(
-          '开始加载初始歌单: ${widget.title}, ID: ${widget.playlistId}, Page: $_currentPage');
       final newSongs = await _fetchSongs(_currentPage);
       setState(() {
         _songs.addAll(newSongs);
@@ -99,7 +94,6 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('加载初始歌单失败: $e');
       setState(() {
         _error = e;
         _isLoading = false;
@@ -114,8 +108,6 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
       _error = null;
     });
     _currentPage++;
-    print(
-        '开始加载更多歌单: ${widget.title}, ID: ${widget.playlistId}, Page: $_currentPage');
     try {
       final newSongs = await _fetchSongs(_currentPage);
       setState(() {
@@ -124,7 +116,6 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
         _isLoadingMore = false;
       });
     } catch (e) {
-      print('加载更多歌单失败: $e');
       setState(() {
         _isLoadingMore = false;
         _currentPage--;
@@ -140,16 +131,12 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
   /// 从API获取歌曲数据 (支持分页)
   Future<List<PlaySongInfo>> _fetchSongs(int page) async {
     if (widget.playlistId == null || widget.playlistId!.isEmpty) {
-      print('歌单ID为空');
       throw Exception('歌单ID无效');
     }
 
     final tracks = await ref
         .read(ProviderManager.apiServiceProvider)
         .getPlaylistTracks(widget.playlistId!, page: page, pageSize: _pageSize);
-
-    print('获取到 ${tracks.length} 首歌曲');
-    print('获取到 ${tracks.length} 首歌曲 for page $page');
 
     if (tracks.isEmpty) {
       return [];
@@ -159,7 +146,6 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
       try {
         return PlaySongInfo.fromJson(map);
       } catch (e) {
-        print('解析歌曲数据失败: $e, 数据: $map');
         return PlaySongInfo(
           hash: map['hash'] ?? '',
           title: map['title'] ?? map['songName'] ?? '未知歌曲',
@@ -265,16 +251,11 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
             song.hash == currentPlayingSongHash;
 
         return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             decoration: BoxDecoration(
-              color: isPlaying
-                  ? Theme.of(context).primaryColor.withOpacity(0.05)
-                  : null,
+              color: isPlaying ? Colors.grey[100] : null,
               borderRadius: BorderRadius.circular(12.0),
             ),
             child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(8.0),
                 child: Container(
@@ -300,11 +281,11 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
                 ),
               ),
               title: Text(
-                song.title,
+                getSongTitle(song.title),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: isPlaying ? Theme.of(context).primaryColor : null,
+                  color: isPlaying ? Colors.pink : null,
                   fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -313,9 +294,7 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: isPlaying
-                      ? Theme.of(context).primaryColor.withOpacity(0.8)
-                      : Colors.grey[600],
+                  color: isPlaying ? Colors.pink : Colors.grey[600],
                   fontSize: 12.0,
                 ),
               ),
@@ -333,14 +312,12 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.volume_up,
-                              color: Theme.of(context).primaryColor,
-                              size: 16.0),
+                          Icon(Icons.volume_up, color: Colors.pink, size: 16.0),
                           const SizedBox(width: 4.0),
                           Text(
                             '正在播放',
                             style: TextStyle(
-                              color: Theme.of(context).primaryColor,
+                              color: Colors.pink,
                               fontSize: 10.0,
                               fontWeight: FontWeight.bold,
                             ),

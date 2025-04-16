@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/provider_manager.dart';
 import '../../data/models/play_song_info.dart';
 import '../../utils/image_utils.dart';
+import '../../hooks/getTitle_ArtistName.dart';
 
 class NextSongCard extends ConsumerWidget {
   final PlaySongInfo nextSongInfo;
@@ -84,7 +85,7 @@ class NextSongCard extends ConsumerWidget {
                       ),
                       Expanded(
                         child: Text(
-                          _getSongTitle(nextSongInfo.title),
+                          getSongTitle(nextSongInfo.title),
                           style: const TextStyle(
                             color: Colors.black87,
                             fontSize: 15,
@@ -101,7 +102,7 @@ class NextSongCard extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          _getArtistName(nextSongInfo.title),
+                          getArtistName(nextSongInfo.title),
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 13,
@@ -158,18 +159,6 @@ class NextSongCard extends ConsumerWidget {
       // 否则认为是秒
       return Duration(seconds: duration);
     }
-  }
-
-  // 从完整标题中获取歌曲名
-  String _getSongTitle(String fullTitle) {
-    List<String> parts = fullTitle.split('-');
-    return parts.length > 1 ? parts[1].trim() : fullTitle;
-  }
-
-  // 从完整标题中获取艺术家名
-  String _getArtistName(String fullTitle) {
-    List<String> parts = fullTitle.split('-');
-    return parts.isNotEmpty ? parts[0].trim() : '';
   }
 
   // 格式化时间
