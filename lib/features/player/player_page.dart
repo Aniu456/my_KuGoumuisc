@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:palette_generator/palette_generator.dart';
-
 import '../../core/providers/provider_manager.dart';
 import '../../services/player_service.dart';
-import '../../utils/image_utils.dart';
 import 'album_cover.dart';
 import 'lyric_widget.dart';
 import 'lyric_utils.dart'; // Added import
@@ -24,8 +21,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   bool _showLyrics = false; // 控制是否显示歌词
-  Color _dominantColor = Colors.pink; // 专辑封面的主色调，默认为粉色
-  String? _lastSongHash; // 记录上一首歌曲的hash，用于检测歌曲变化
 
   @override
   void initState() {
@@ -37,35 +32,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
     // 添加观察者以监控App生命周期
     WidgetsBinding.instance.addObserver(this);
-
-    // 获取当前歌曲封面的主色调
-    _updateDominantColor();
-  }
-
-  // 更新专辑封面的主色调
-  Future<void> _updateDominantColor() async {
-    final playerService = ref.read(ProviderManager.playerServiceProvider);
-    final currentSong = playerService.currentSongInfo;
-
-    if (currentSong != null &&
-        currentSong.cover != null &&
-        currentSong.cover!.isNotEmpty) {
-      try {
-        final imageProvider =
-            NetworkImage(ImageUtils.getLargeUrl(currentSong.cover));
-        final paletteGenerator =
-            await PaletteGenerator.fromImageProvider(imageProvider);
-
-        if (paletteGenerator.dominantColor != null) {
-          setState(() {
-            _dominantColor = paletteGenerator.dominantColor!.color;
-          });
-        }
-      } catch (e) {
-        // 如果出现错误，保持默认颜色
-        print('无法加载专辑颜色: $e');
-      }
-    }
   }
 
   @override
@@ -88,15 +54,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final duration = playerService.duration;
     final lyricsText = playerService.lyrics;
 
-    // 检测歌曲变化，如果变化了就更新主色调
-    if (currentSong != null && currentSong.hash != _lastSongHash) {
-      _lastSongHash = currentSong.hash;
-      // 在下一帧更新主色调，避免在build过程中调用setState
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _updateDominantColor();
-      });
-    }
-
     // 解析歌词
     final lyrics = parseLyrics(lyricsText);
     final currentLyricIndex = getCurrentLyricIndex(lyrics, position);
@@ -114,15 +71,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         titleParts.length > 1 ? titleParts[1].trim() : currentSong.title;
 
     // 如果主色调太暗或接近白色，则使用默认粉色
-    Color buttonColor = _dominantColor;
-    // 计算亮度，使用HSL模型的L值
-    final HSLColor hslColor = HSLColor.fromColor(_dominantColor);
-    final double brightness = hslColor.lightness;
-
-    // 如果太暗或太亮，使用默认粉色
-    if (brightness < 0.1 || brightness > 0.9) {
-      buttonColor = Colors.pink;
-    }
+    Color buttonColor = Colors.pink;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -209,7 +158,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         lyrics: lyrics,
                         currentIndex: currentLyricIndex,
                         currentSong: currentSong,
-                        accentColor: buttonColor,
                         position: position, // 添加当前播放位置
                         onClose: () {
                           setState(() {
@@ -234,7 +182,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             lyrics: lyrics,
                             currentSong: currentSong,
                             position: position,
-                            accentColor: buttonColor,
                             onTap: () {
                               setState(() {
                                 _showLyrics = true;

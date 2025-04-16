@@ -9,7 +9,6 @@ class MiniLyricWidget extends ConsumerWidget {
   final List<LyricLine> lyrics;
   final Duration position;
   final PlaySongInfo currentSong;
-  final Color accentColor;
   final Function() onTap;
 
   const MiniLyricWidget({
@@ -17,7 +16,6 @@ class MiniLyricWidget extends ConsumerWidget {
     required this.lyrics,
     required this.position,
     required this.currentSong,
-    required this.accentColor,
     required this.onTap,
   });
 
@@ -102,11 +100,11 @@ class MiniLyricWidget extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 17.0,
                 fontWeight: FontWeight.w600,
-                color: accentColor, // 高亮颜色
+                color: Colors.pink, // Use a fixed color
               ),
               child: Text(
                 currentLyric,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
               ),
@@ -123,7 +121,7 @@ class MiniLyricWidget extends ConsumerWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 14.0,
+                  fontSize: 15.0,
                   color: Colors.black54.withAlpha(179), // 0.7 opacity (179/255)
                 ),
               ),
