@@ -87,7 +87,7 @@ class NextSongCard extends ConsumerWidget {
                         child: Text(
                           getSongTitle(nextSongInfo.title),
                           style: const TextStyle(
-                            color: Colors.black87,
+                            color: Colors.black,
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                           ),

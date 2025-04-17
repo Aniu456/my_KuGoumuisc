@@ -5,6 +5,7 @@ import 'recommendation_screen.dart';
 import 'search_screen.dart';
 import 'playlist_screen.dart';
 import 'profile_screen.dart';
+import '../salomon_bottom_bar.dart'; // 确保路径正确
 
 /// 当前选中的底部导航索引
 final currentTabProvider = StateProvider<int>((ref) => 0);
@@ -45,51 +46,51 @@ class HomeScreen extends ConsumerWidget {
           ),
 
           /// 迷你播放器，使用 Positioned 固定在底部导航栏上方
-          const Positioned(
+          Positioned(
             left: 0,
             right: 0,
 
             /// 距离底部一定距离，使其位于底部导航栏上方
-            bottom: 5,
+            bottom: kBottomNavigationBarHeight + 5, // 考虑导航栏高度
             child: MiniPlayer(),
           ),
         ],
       ),
 
-      /// 底部导航栏
-      bottomNavigationBar: BottomNavigationBar(
+      /// 底部导航栏 - 使用 SalomonBottomBar
+      bottomNavigationBar: SalomonBottomBar(
         /// 当前选中的索引
         currentIndex: currentTab,
 
         /// 底部导航项点击回调，更新当前选中的索引
         onTap: (index) => ref.read(currentTabProvider.notifier).state = index,
 
-        /// 设置底部导航栏的类型为固定，显示所有标签
-        type: BottomNavigationBarType.fixed,
-
-        /// 选中时的颜色
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-
-        /// 未选中时的颜色
-        unselectedItemColor: Colors.grey,
-
         /// 底部导航项列表
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          SalomonBottomBarItem(
             icon: Icon(Icons.home),
-            label: '发现',
+            title: Text("发现"),
+            // 你可以自定义选中颜色，或使用主题色
+            selectedColor: Theme.of(context).colorScheme.primary,
+            // unselectedColor: Colors.grey, // 可选：未选中颜色
           ),
-          BottomNavigationBarItem(
+          SalomonBottomBarItem(
             icon: Icon(Icons.playlist_play),
-            label: '歌单',
+            title: Text("歌单"),
+            selectedColor: Theme.of(context).colorScheme.primary,
+            // unselectedColor: Colors.grey,
           ),
-          BottomNavigationBarItem(
+          SalomonBottomBarItem(
             icon: Icon(Icons.search),
-            label: '搜索',
+            title: Text("搜索"),
+            selectedColor: Theme.of(context).colorScheme.primary,
+            // unselectedColor: Colors.grey,
           ),
-          BottomNavigationBarItem(
+          SalomonBottomBarItem(
             icon: Icon(Icons.person),
-            label: '我的',
+            title: Text("我的"),
+            selectedColor: Theme.of(context).colorScheme.primary,
+            // unselectedColor: Colors.grey,
           ),
         ],
       ),

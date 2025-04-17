@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/providers/provider_manager.dart';
 import '../../data/models/models.dart';
-import '../../data/repositories/music_repository.dart';
+import '../../services/api_service.dart';
 
 /// 搜索状态枚举
 enum SearchStatus {
@@ -93,112 +94,59 @@ class SearchState {
 /// 搜索控制器
 class SearchController extends StateNotifier<SearchState> {
   /// 注入音乐仓库用于获取搜索数据
-  final MusicRepository _musicRepository;
-
-  /// 每页显示的数量
+  final ApiService _apiService;
   static const int pageSize = 20;
-
-  /// 构造函数
-  SearchController(this._musicRepository) : super(SearchState());
+  SearchController(this._apiService) : super(SearchState());
 
   /// 执行搜索
   /// @param keyword 搜索关键词
   Future<void> search(String keyword) async {
-    // 如果关键词为空，重置状态
     if (keyword.isEmpty) {
       state = SearchState();
       return;
     }
-
-    // 如果关键词没变且不是初始状态，不重复搜索
-    if (keyword == state.keyword && state.status != SearchStatus.initial) {
+    // 避免重复搜索
+    if (keyword == state.keyword && state.status != SearchStatus.initial)
       return;
-    }
-
-    // 设置搜索中状态
-    state = SearchState(
-      status: SearchStatus.loading,
-      keyword: keyword,
-    );
-
-    try {
-      // 调用仓库执行搜索
-      final searchResponse = await _musicRepository.searchSongs(
-        keyword,
-        page: 1,
-        pageSize: pageSize,
-      );
-
-      // 更新状态为搜索成功
-      state = state.copyWith(
-        status: SearchStatus.success,
-        searchResponse: searchResponse,
-        page: 1,
-        hasMore: searchResponse.lists.length >= pageSize,
-      );
-    } catch (e) {
-      // 处理搜索错误
-      state = state.copyWith(
-        status: SearchStatus.error,
-        errorMessage: e.toString(),
-      );
-    }
+    await _doSearch(keyword, 1, isLoadMore: false);
   }
 
-  /// 加载更多搜索结果
   Future<void> loadMore() async {
-    // 如果没有更多数据，或者正在加载，或者是错误状态，不执行加载
     if (!state.hasMore ||
         state.isLoadingMore ||
-        state.status != SearchStatus.success) {
-      return;
+        state.status != SearchStatus.success) return;
+    await _doSearch(state.keyword, state.page + 1, isLoadMore: true);
+  }
+
+  Future<void> _doSearch(String keyword, int page,
+      {required bool isLoadMore}) async {
+    if (isLoadMore) {
+      state = state.copyWith(isLoadingMore: true);
+    } else {
+      state = SearchState(status: SearchStatus.loading, keyword: keyword);
     }
-
-    // 设置加载更多状态
-    state = state.copyWith(isLoadingMore: true);
-
     try {
-      // 计算下一页
-      final nextPage = state.page + 1;
-
-      // 调用仓库加载更多
-      final moreResults = await _musicRepository.searchSongs(
-        state.keyword,
-        page: nextPage,
-        pageSize: pageSize,
-      );
-
-      // 如果没有数据，表示没有更多结果
-      if (moreResults.lists.isEmpty) {
-        state = state.copyWith(
-          hasMore: false,
-          isLoadingMore: false,
-        );
-        return;
-      }
-
-      // 合并原有结果和新结果
-      final currentSongs = state.searchResponse?.lists ?? [];
-      final newSongs = [...currentSongs, ...moreResults.lists];
-
-      // 创建合并后的搜索响应
-      final mergedResponse = SearchResponse(
+      final res = await _apiService.searchSongs(keyword,
+          page: page, pageSize: pageSize);
+      final List<SearchSong> newSongs = isLoadMore
+          ? [...(state.searchResponse?.lists ?? []), ...res.lists]
+          : res.lists;
+      final merged = SearchResponse(
         lists: newSongs,
-        indextotal: moreResults.indextotal,
-        correctiontype: moreResults.correctiontype,
-        algPath: moreResults.algPath,
+        indextotal: res.indextotal,
+        correctiontype: res.correctiontype,
+        algPath: res.algPath,
       );
-
-      // 更新状态
       state = state.copyWith(
-        searchResponse: mergedResponse,
-        page: nextPage,
-        hasMore: moreResults.lists.length >= pageSize,
+        status: SearchStatus.success,
+        searchResponse: merged,
+        page: page,
+        hasMore: res.lists.length >= pageSize,
         isLoadingMore: false,
       );
     } catch (e) {
-      // 处理加载更多错误
       state = state.copyWith(
+        status: isLoadMore ? state.status : SearchStatus.error,
         isLoadingMore: false,
         errorMessage: e.toString(),
       );
@@ -214,6 +162,6 @@ class SearchController extends StateNotifier<SearchState> {
 /// 搜索控制器提供者
 final searchControllerProvider =
     StateNotifierProvider<SearchController, SearchState>((ref) {
-  final musicRepository = ref.watch(musicRepositoryProvider);
-  return SearchController(musicRepository);
+  final apiService = ref.watch(ProviderManager.apiServiceProvider);
+  return SearchController(apiService);
 });

@@ -24,7 +24,7 @@ class MiniPlayer extends ConsumerWidget {
     return Container(
       height: 65,
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -114,7 +114,7 @@ class MiniPlayer extends ConsumerWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
+                    color: Colors.pink,
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(

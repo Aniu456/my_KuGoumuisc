@@ -1,289 +1,333 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/repositories/music_repository.dart';
+import '../core/providers/provider_manager.dart';
 import '../data/models/models.dart';
+import '../features/search/search_controller.dart';
+import '../features/player/player_page.dart';
+import '../utils/image_utils.dart';
 
-/// 搜索状态枚举
-enum SearchState {
-  initial, // 初始状态，显示搜索提示
-  searching, // 搜索中，显示加载指示器
-  results, // 搜索到结果，显示结果列表
-  noResults, // 没有搜索到结果，显示无结果提示
-  error, // 搜索过程中发生错误，显示错误提示
-}
-
-/// 提供搜索关键词的状态
-final searchQueryProvider = StateProvider<String>((ref) => '');
-
-/// 提供搜索状态的状态
-final searchStateProvider =
-    StateProvider<SearchState>((ref) => SearchState.initial);
-
-/// 提供搜索结果的 FutureProvider
-final searchResultsProvider =
-    FutureProvider.autoDispose<SearchResponse>((ref) async {
-  final query = ref.watch(searchQueryProvider);
-
-  /// 如果搜索关键词为空，将状态设置为初始状态并抛出异常
-  if (query.isEmpty) {
-    ref.read(searchStateProvider.notifier).state = SearchState.initial;
-    throw Exception('搜索关键词不能为空');
-  }
-
-  /// 设置搜索状态为搜索中
-  ref.read(searchStateProvider.notifier).state = SearchState.searching;
-
-  try {
-    /// 从 Riverpod 中读取 MusicRepository
-    final repository = ref.read(musicRepositoryProvider);
-
-    /// 调用 repository 的搜索歌曲方法
-    final results = await repository.searchSongs(query);
-
-    /// 根据搜索结果是否为空更新搜索状态
-    ref.read(searchStateProvider.notifier).state =
-        results.lists.isEmpty ? SearchState.noResults : SearchState.results;
-
-    /// 返回搜索结果
-    return results;
-  } catch (e) {
-    /// 搜索失败，设置搜索状态为错误
-    ref.read(searchStateProvider.notifier).state = SearchState.error;
-    throw Exception('搜索失败: $e');
-  }
-});
+// 注意：我们不再需要定义这些Provider，因为我们将使用ProviderManager中的searchControllerProvider
 
 /// 搜索页面
-class SearchScreen extends ConsumerWidget {
+class SearchScreen extends ConsumerStatefulWidget {
   /// 构造函数
   const SearchScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    /// 监听搜索状态
-    final searchState = ref.watch(searchStateProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        title: _SearchBar(), // 搜索栏组件
-      ),
-
-      /// 使用 IndexedStack 根据不同的搜索状态显示不同的内容
-      body: IndexedStack(
-        index: searchState.index, // 使用搜索状态的 index 来控制显示哪个子 Widget
-        children: const [
-          _InitialContent(), // 初始内容，显示搜索提示
-          _LoadingContent(), // 加载中内容，显示加载指示器
-          _ResultsContent(), // 搜索结果内容，显示搜索到的歌曲列表
-          _NoResultsContent(), // 无结果内容，显示未找到相关内容提示
-          _ErrorContent(), // 错误内容，显示搜索失败提示
-        ],
-      ),
-    );
-  }
+  ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
-/// 搜索栏组件
-class _SearchBar extends ConsumerWidget {
+class _SearchScreenState extends ConsumerState<SearchScreen> {
+  // 控制器
+  final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  // 热门标签
+  final List<String> _tags = ['热门', '流行', '经典', '伤感', '轻音乐', '摇滚', '粤语', '日语'];
+
+  // 演示用的默认搜索结果，当没有搜索时显示
+  final List<Map<String, String>> _results = [];
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    /// 获取当前的搜索关键词
-    final currentQuery = ref.watch(searchQueryProvider);
-
-    /// 创建 TextEditingController 并设置初始文本为当前的搜索关键词
-    final controller = TextEditingController(text: currentQuery);
-
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        hintText: '搜索歌曲、歌手、专辑',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
-        ),
-        filled: true,
-        fillColor: Colors.grey.withOpacity(0.1),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-        prefixIcon: const Icon(Icons.search),
-
-        /// 清除搜索框内容的按钮
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.clear),
-          onPressed: () {
-            controller.clear();
-
-            /// 清空搜索关键词
-            ref.read(searchQueryProvider.notifier).state = '';
-          },
-        ),
-      ),
-      textInputAction: TextInputAction.search,
-
-      /// 用户提交搜索关键词时的回调
-      onSubmitted: (value) {
-        /// 更新搜索关键词
-        ref.read(searchQueryProvider.notifier).state = value;
-      },
-    );
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
   }
-}
 
-/// 初始搜索提示内容
-class _InitialContent extends StatelessWidget {
-  /// 构造函数
-  const _InitialContent();
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      final searchState = ref.read(ProviderManager.searchControllerProvider);
+      if (!searchState.isLoadingMore && searchState.hasMore) {
+        ref.read(ProviderManager.searchControllerProvider.notifier).loadMore();
+      }
+    }
+  }
+
+  void _performSearch() {
+    final keyword = _controller.text.trim();
+    if (keyword.isNotEmpty) {
+      ref
+          .read(ProviderManager.searchControllerProvider.notifier)
+          .search(keyword);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search,
-            size: 80,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '搜索你喜欢的音乐',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
+    // 监听搜索状态
+    final searchState = ref.watch(ProviderManager.searchControllerProvider);
+    final playerService = ref.watch(ProviderManager.playerServiceProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 1,
+        title: const Text('搜索', style: TextStyle(color: Colors.black)),
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 搜索栏
+            _buildSearchBar(),
+            const SizedBox(height: 16),
+
+            // 根据搜索状态显示不同内容
+            Expanded(
+              child: _buildContentBySearchState(searchState, playerService),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-}
 
-/// 搜索加载中内容
-class _LoadingContent extends ConsumerWidget {
-  /// 构造函数
-  const _LoadingContent();
+  // 根据搜索状态构建不同的内容
+  Widget _buildContentBySearchState(SearchState searchState, playerService) {
+    // 搜索中状态
+    if (searchState.isSearching) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return const Center(
-      child: CircularProgressIndicator(),
+    // 搜索错误状态
+    if (searchState.hasError) {
+      return _buildErrorSection(searchState.errorMessage);
+    }
+
+    // 搜索结果为空状态
+    if (searchState.showEmptyResult) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTagsSection(),
+          const SizedBox(height: 20),
+          const Center(child: Text('没有找到相关歌曲')),
+        ],
+      );
+    }
+
+    // 搜索成功且有结果状态
+    if (searchState.status == SearchStatus.success &&
+        searchState.songs.isNotEmpty) {
+      return _buildSearchResultsList(searchState, playerService);
+    }
+
+    // 初始状态 - 显示标签和推荐列表
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTagsSection(),
+      ],
     );
   }
-}
 
-/// 搜索结果内容
-class _ResultsContent extends ConsumerWidget {
-  /// 构造函数
-  const _ResultsContent();
+  // 搜索栏组件
+  Widget _buildSearchBar() {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(24),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _controller,
+              decoration: const InputDecoration(
+                hintText: '搜索歌曲、歌手、专辑',
+                border: InputBorder.none,
+                icon: Icon(Icons.search),
+              ),
+              onSubmitted: (_) => _performSearch(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          onPressed: _performSearch,
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+          child: const Text('搜索'),
+        ),
+      ],
+    );
+  }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    /// 监听搜索结果 FutureProvider
-    final results = ref.watch(searchResultsProvider);
-
-    return results.when(
-      data: (data) {
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: data.lists.length,
-          itemBuilder: (context, index) {
-            final song = data.lists[index];
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(4),
+  // 标签部分
+  Widget _buildTagsSection() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _tags
+          .map((tag) => GestureDetector(
+                onTap: () {
+                  _controller.text = tag;
+                  _performSearch();
+                },
+                child: Chip(
+                  label: Text(tag),
+                  backgroundColor: Colors.grey[100],
                 ),
-                child: const Icon(Icons.music_note, color: Colors.white),
-              ),
-              title: Text(song.songName),
-              subtitle: Text(
-                song.singers.isNotEmpty ? song.singers.first.name : '未知歌手',
-              ),
-              trailing: const Icon(Icons.more_vert),
-              onTap: () {
-                // TODO: 处理歌曲点击播放
-              },
-            );
-          },
+              ))
+          .toList(),
+    );
+  }
+
+  // 错误提示部分
+  Widget _buildErrorSection(String? errorMessage) {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const SizedBox(height: 16),
+            Text('搜索失败: ${errorMessage ?? "未知错误"}',
+                style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _performSearch,
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 搜索结果列表
+  Widget _buildSearchResultsList(SearchState searchState, playerService) {
+    // 调试输出服务器返回的数据
+    print('\n======= 搜索结果数据 ======');
+    print('搜索关键词: ${searchState.keyword}');
+    print('搜索结果数量: ${searchState.songs.length}');
+    print('当前页码: ${searchState.page}');
+    print('是否还有更多数据: ${searchState.hasMore}');
+
+    // 输出第一首歌曲的详细信息（如果有的话）
+    if (searchState.songs.isNotEmpty) {
+      final firstSong = searchState.songs.first;
+      print('\n第一首歌曲详情:');
+      print(firstSong);
+      print('歌曲名: ${firstSong.songName}');
+      print('歌手: ${firstSong.singers.map((s) => s.name).join(", ")}');
+      print('文件哈希: ${firstSong.fileHash}');
+      print('图片URL: ${firstSong.image}');
+      print('文件大小: ${firstSong.fileSize}');
+      print('MixSongID: ${firstSong.mixSongId}');
+      print('时长: ${firstSong.duration} 秒');
+      print('==============================\n');
+    }
+    return ListView.separated(
+      controller: _scrollController,
+      itemCount: searchState.songs.length + (searchState.isLoadingMore ? 1 : 0),
+      separatorBuilder: (context, index) =>
+          Divider(height: 1, color: Colors.grey[200]),
+      itemBuilder: (context, index) {
+        // 显示加载更多指示器
+        if (index == searchState.songs.length) {
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2.0)),
+          );
+        }
+
+        final song = searchState.songs[index];
+        final singerNames = song.singers.map((s) => s.name).join(', ');
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(vertical: 4.0),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              color: Colors.grey[300],
+              width: 48,
+              height: 48,
+              child: song.image.isNotEmpty
+                  ? ImageUtils.createCachedImage(
+                      ImageUtils.getThumbnailUrl(song.image),
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.music_note,
+                          color: Colors.white70, size: 32),
+                    )
+                  : const Icon(Icons.music_note,
+                      color: Colors.white70, size: 32),
+            ),
+          ),
+          title: Text(
+            song.songName,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            singerNames,
+            style: const TextStyle(color: Colors.grey),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.play_circle_outline, color: Colors.pink),
+            onPressed: () => _playSong(song, index, searchState, playerService),
+          ),
+          onTap: () => _playSong(song, index, searchState, playerService),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Center(child: Text('搜索失败，请重试')),
     );
   }
-}
 
-/// 无搜索结果内容
-class _NoResultsContent extends ConsumerWidget {
-  /// 构造函数
-  const _NoResultsContent();
+  // 播放歌曲
+  Future<void> _playSong(SearchSong song, int index, SearchState searchState,
+      playerService) async {
+    try {
+      // 将搜索结果转换为可播放的歌曲信息
+      final playSong = PlaySongInfo.fromSearchSong(song);
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    /// 获取当前的搜索关键词
-    final query = ref.watch(searchQueryProvider);
+      // 准备播放列表（包含所有搜索结果）
+      final playlist =
+          searchState.songs.map((s) => PlaySongInfo.fromSearchSong(s)).toList();
+      playerService.preparePlaylist(playlist, index);
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off,
-            size: 80,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '未找到"$query"相关内容',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+      // 播放歌曲
+      await playerService.play(playSong);
 
-/// 搜索错误内容
-class _ErrorContent extends ConsumerWidget {
-  /// 构造函数
-  const _ErrorContent();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 80,
-            color: Colors.red[300],
+      // 导航到播放页面
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const PlayerPage(),
           ),
-          const SizedBox(height: 16),
-          const Text(
-            '搜索过程中出现错误',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.red,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              // TODO: 实现重试搜索功能
-            },
-            child: const Text('重试'),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('播放失败: $e')),
+        );
+      }
+    }
   }
 }

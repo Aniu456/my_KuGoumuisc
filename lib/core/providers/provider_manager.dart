@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import '../../data/models/models.dart';
 import '../../services/api_service.dart';
 import '../../services/image_service.dart';
 import '../../services/player_service.dart';
@@ -8,7 +8,12 @@ import '../../features/auth/auth_controller.dart';
 import '../../features/auth/profile_controller.dart';
 import '../../data/repositories/music_repository.dart';
 import '../../features/search/search_controller.dart';
-import '../../data/models/models.dart';
+
+// 便于外部直接引用
+final apiServiceProvider = Provider<ApiService>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return ApiService(prefs);
+});
 
 /// Provider管理器
 /// 集中管理应用中的所有Provider
@@ -74,8 +79,8 @@ class ProviderManager {
   static final controllerProviders = [
     /// SearchController Provider
     StateNotifierProvider<SearchController, SearchState>((ref) {
-      final musicRepository = ref.watch(musicRepositoryProvider);
-      return SearchController(musicRepository);
+      final apiService = ref.watch(apiServiceProvider);
+      return SearchController(apiService);
     }),
 
     /// PlaylistNotifier Provider

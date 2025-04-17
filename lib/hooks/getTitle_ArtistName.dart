@@ -1,8 +1,8 @@
 // 从完整标题中获取歌曲名和艺术家名
-// library;
+library;
 
 // 导出公共函数
-// export 'getTitle_ArtistName.dart' show getSongTitle, getArtistName;
+export 'getTitle_ArtistName.dart' show getSongTitle, getArtistName;
 
 /// 从完整标题中获取歌曲名
 String getSongTitle(String fullTitle) {

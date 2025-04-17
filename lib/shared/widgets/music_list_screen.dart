@@ -168,14 +168,27 @@ class _MusicListScreenState extends ConsumerState<MusicListScreen> {
     final currentPlayingSongHash = playerService.currentSongInfo?.hash;
 
     return Scaffold(
+      backgroundColor: Colors.white, // 将Scaffold背景设为白色
       appBar: AppBar(
         title: Text(widget.title),
-        elevation: 0, // 去掉阴影
+        elevation: 1.0, // 给AppBar添加轻微阴影以增加层次感
+        backgroundColor: Colors.white, // AppBar背景设为白色
+        foregroundColor: Colors.black87, // AppBar前景（标题、图标）颜色
         centerTitle: true, // 标题居中
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: '搜索歌单内歌曲',
+            onPressed: () {
+              // 导航到搜索页面
+            },
+          ),
+          const SizedBox(width: 8), // 右边留点空隙
+        ],
       ),
       body: Column(
         children: [
-          // 歌单列表（使用Expanded确保列表可以填充除MiniPlayer外的空间）
+          // 移除外部包裹的Container和ClipRRect
           Expanded(
             child: RefreshIndicator(
               onRefresh: _handleRefresh,
