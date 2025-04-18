@@ -15,9 +15,22 @@ class PlaylistScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
+      backgroundColor: Colors.white, // 设置页面背景为白色
       appBar: AppBar(
-        title: const Text('我的歌单'),
-        elevation: 0,
+        title: const Text(
+          '我的歌单',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87, // AppBar 标题颜色
+          ),
+        ),
+        elevation: 0, // 无阴影
+        backgroundColor: Colors.white, // AppBar 背景色
+        // 返回按钮颜色
+        iconTheme: const IconThemeData(color: Colors.black54),
+        // 右侧 Action 图标颜色
+        actionsIconTheme: const IconThemeData(color: Colors.black54),
         actions: [
           /// 创建歌单按钮
           IconButton(
@@ -74,12 +87,6 @@ class _PlaylistContentState extends ConsumerState<_PlaylistContent> {
   Widget build(BuildContext context) {
     /// 监听歌单状态提供者
     final playlistState = ref.watch(ProviderManager.playlistProvider);
-
-    /// 打印当前歌单状态，用于调试
-    print(
-        '歌单状态: isLoading=${playlistState.isLoading}, hasError=${playlistState.hasError}, '
-        'playlistResponse=${playlistState.playlistResponse != null}, '
-        'errorMessage=${playlistState.errorMessage}');
 
     /// 处理加载状态：当正在加载且没有现有数据时显示加载骨架屏
     if (playlistState.isLoading && playlistState.playlistResponse == null) {
@@ -157,8 +164,17 @@ class _PlaylistContentState extends ConsumerState<_PlaylistContent> {
             ),
           ),
 
-          /// 底部留白，防止被底部导航栏遮挡
-          const SizedBox(height: 70),
+          /// 底部留白，根据是否有歌曲播放动态调整高度
+          Consumer(builder: (context, ref, _) {
+            // 检查是否有正在播放的歌曲
+            final playerService =
+                ref.watch(ProviderManager.playerServiceProvider);
+            final hasSong = playerService.currentSongInfo != null;
+
+            // 如果有歌曲播放，预留更多空间给迷你播放器
+            // 如果没有歌曲播放，只需要预留导航栏的空间
+            return SizedBox(height: hasSong ? 130.0 : 80.0);
+          }),
         ],
       ),
     );
@@ -167,7 +183,7 @@ class _PlaylistContentState extends ConsumerState<_PlaylistContent> {
   /// 构建加载中的骨架屏内容
   Widget _buildLoadingContent() {
     return ListView(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       children: List.generate(
         8,
         (index) => const Padding(
@@ -206,30 +222,55 @@ class _PlaylistItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(4),
-          color: Colors.grey[300],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: coverUrl != null && coverUrl!.isNotEmpty
-            ? ImageUtils.createCachedImage(
-                ImageUtils.getMediumUrl(coverUrl!),
-                fit: BoxFit.cover,
-              )
-            : const Icon(Icons.music_note, color: Colors.white),
-      ),
-      title: Text(
-        name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text('$songCount 首'),
-      trailing: const Icon(Icons.chevron_right),
+    return InkWell(
       onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Row(
+          children: [
+            // 歌单封面
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: coverUrl != null && coverUrl!.isNotEmpty
+                  ? ImageUtils.createCachedImage(
+                      ImageUtils.getThumbnailUrl(coverUrl!),
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.music_note, color: Colors.grey),
+                    ),
+            ),
+            const SizedBox(width: 12),
+            // 歌单名称和歌曲数量
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$songCount 首',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            ),
+            // 右箭头
+            Icon(Icons.chevron_right, color: Colors.grey[300], size: 20),
+          ],
+        ),
+      ),
     );
   }
 }

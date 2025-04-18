@@ -26,7 +26,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final List<String> _tags = ['热门', '流行', '经典', '伤感', '轻音乐', '摇滚', '粤语', '日语'];
 
   // 演示用的默认搜索结果，当没有搜索时显示
-  final List<Map<String, String>> _results = [];
 
   @override
   void initState() {
@@ -219,17 +218,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   // 搜索结果列表
   Widget _buildSearchResultsList(SearchState searchState, playerService) {
     // 调试输出服务器返回的数据
-    print('\n======= 搜索结果数据 ======');
-    print('搜索关键词: ${searchState.keyword}');
-    print('搜索结果数量: ${searchState.songs.length}');
-    print('当前页码: ${searchState.page}');
-    print('是否还有更多数据: ${searchState.hasMore}');
 
     // 输出第一首歌曲的详细信息（如果有的话）
     if (searchState.songs.isNotEmpty) {
       final firstSong = searchState.songs.first;
       print('\n第一首歌曲详情:');
-      print(firstSong);
       print('歌曲名: ${firstSong.songName}');
       print('歌手: ${firstSong.singers.map((s) => s.name).join(", ")}');
       print('文件哈希: ${firstSong.fileHash}');

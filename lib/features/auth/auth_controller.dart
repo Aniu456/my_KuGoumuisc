@@ -20,22 +20,46 @@ class AuthController extends ChangeNotifier {
   /// @return 登录是否成功
   Future<bool> loginWithPassword(String username, String password) async {
     try {
+      print('开始使用用户名和密码登录: $username');
+
       /// 调用 ApiService 的登录接口
       final response = await _apiService.loginWithPassword(username, password);
+      print('登录响应: $response');
 
       /// 判断登录是否成功
       if (response['status'] == 1) {
         /// 从响应中获取data字段
         final data = response['data'];
+        print('登录成功，提取的 data: $data');
 
         /// 确保data不为null并且包含token
         if (data != null && data['token'] != null) {
           /// 将返回的 token 存储到本地
           await _prefs.setString('auth_token', data['token']);
+          print('存储 token: ${data['token']}');
+
+          // 存储用户ID
+          if (data['userid'] != null) {
+            await _prefs.setString('user_id', data['userid'].toString());
+            print('存储 user_id: ${data['userid']}');
+          }
         } else if (response['token'] != null) {
           /// 兼容token可能在响应根目录的情况
           await _prefs.setString('auth_token', response['token']);
+          print('存储 token(根目录): ${response['token']}');
+
+          // 存储用户ID
+          if (response['userid'] != null) {
+            await _prefs.setString('user_id', response['userid'].toString());
+            print('存储 user_id(根目录): ${response['userid']}');
+          }
         }
+
+        // 检查存储后的值
+        final storedToken = _prefs.getString('auth_token');
+        final storedUserId = _prefs.getString('user_id');
+        print('存储后的 auth_token: $storedToken');
+        print('存储后的 user_id: $storedUserId');
 
         /// 通知监听器（Provider）状态已改变，触发 UI 更新
         notifyListeners();
@@ -58,22 +82,46 @@ class AuthController extends ChangeNotifier {
   /// @return 登录是否成功
   Future<bool> loginWithPhone(String phone, String code) async {
     try {
+      print('开始使用手机号登录: $phone');
+
       /// 调用 ApiService 的登录接口
       final response = await _apiService.loginWithPhone(phone, code);
+      print('手机号登录响应: $response');
 
       /// 判断登录是否成功
       if (response['status'] == 1) {
         /// 从响应中获取data字段
         final data = response['data'];
+        print('手机号登录成功，提取的 data: $data');
 
         /// 确保data不为null并且包含token
         if (data != null && data['token'] != null) {
           /// 将返回的 token 存储到本地
           await _prefs.setString('auth_token', data['token']);
+          print('存储 token: ${data['token']}');
+
+          // 存储用户ID
+          if (data['userid'] != null) {
+            await _prefs.setString('user_id', data['userid'].toString());
+            print('存储 user_id: ${data['userid']}');
+          }
         } else if (response['token'] != null) {
           /// 兼容token可能在响应根目录的情况
           await _prefs.setString('auth_token', response['token']);
+          print('存储 token(根目录): ${response['token']}');
+
+          // 存储用户ID
+          if (response['userid'] != null) {
+            await _prefs.setString('user_id', response['userid'].toString());
+            print('存储 user_id(根目录): ${response['userid']}');
+          }
         }
+
+        // 检查存储后的值
+        final storedToken = _prefs.getString('auth_token');
+        final storedUserId = _prefs.getString('user_id');
+        print('存储后的 auth_token: $storedToken');
+        print('存储后的 user_id: $storedUserId');
 
         /// 通知监听器（Provider）状态已改变，触发 UI 更新
         notifyListeners();

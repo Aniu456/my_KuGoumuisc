@@ -146,22 +146,35 @@ class ProfileController extends StateNotifier<ProfileState> {
       /// 设置加载状态为 loading
       state = state.copyWith(loadState: ProfileLoadState.loading);
 
-      /// 调用 ApiService 获取用户详细信息
-      final response = await _apiService.getUserDetail();
+      try {
+        /// 调用 ApiService 获取用户详细信息
+        final response = await _apiService.getUserDetail();
 
-      /// 判断请求是否成功且返回数据不为空
-      if (response['status'] == 1 && response['data'] != null) {
-        /// 从返回的 JSON 数据创建 UserProfile 实例
-        final userProfile = UserProfile.fromJson(response['data']);
+        /// 判断请求是否成功且返回数据不为空
+        if (response['status'] == 1 && response['data'] != null) {
+          /// 从返回的 JSON 数据创建 UserProfile 实例
+          final userProfile = UserProfile.fromJson(response['data']);
 
-        /// 更新状态为 loaded，并设置用户信息
-        state = state.copyWith(
-          loadState: ProfileLoadState.loaded,
-          userProfile: userProfile,
-        );
-      } else {
-        /// 如果请求失败或没有数据，抛出异常
-        throw Exception(response['error_msg'] ?? '获取用户信息失败');
+          /// 更新状态为 loaded，并设置用户信息
+          state = state.copyWith(
+            loadState: ProfileLoadState.loaded,
+            userProfile: userProfile,
+          );
+          return;
+        } else {
+          /// 如果请求失败或没有数据，抛出异常
+          throw Exception(response['error_msg'] ?? '获取用户信息失败');
+        }
+      } catch (e) {
+        // 如果是未登录错误，设置特定的错误消息
+        if (e.toString().contains('未登录') ||
+            e.toString().contains('token') ||
+            e.toString().contains('认证') ||
+            e.toString().contains('授权')) {
+          throw Exception('未登录或登录已过期，请重新登录');
+        }
+        // 其他错误直接抛出
+        rethrow;
       }
     } catch (e) {
       /// 捕获异常，并更新状态为 error，设置错误信息

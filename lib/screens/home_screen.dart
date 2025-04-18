@@ -4,7 +4,7 @@ import '../shared/widgets/mini_player.dart';
 import 'recommendation_screen.dart';
 import 'search_screen.dart';
 import 'playlist_screen.dart';
-import 'profile_screen.dart';
+import 'profile_screen_simplified.dart'; // 使用简化版个人中心页面
 import '../salomon_bottom_bar.dart'; // 确保路径正确
 
 /// 当前选中的底部导航索引
@@ -25,8 +25,8 @@ class HomeScreen extends ConsumerWidget {
     /// 搜索页面
     const SearchScreen(),
 
-    /// 个人中心页面
-    const ProfileScreen(),
+    /// 个人中心页面 - 使用简化版
+    const ProfileScreenSimplified(),
   ];
 
   @override
@@ -51,7 +51,7 @@ class HomeScreen extends ConsumerWidget {
             right: 0,
 
             /// 距离底部一定距离，使其位于底部导航栏上方
-            bottom: kBottomNavigationBarHeight + 5, // 考虑导航栏高度
+            bottom: 0,
             child: MiniPlayer(),
           ),
         ],
