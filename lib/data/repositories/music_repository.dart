@@ -58,12 +58,6 @@ class MusicRepository {
       {int page = 1, int pageSize = 20}) {
     return _apiService.searchSongs(keyword, page: page, pageSize: pageSize);
   }
-
-  /// 获取最近播放记录
-  Future<RecentSongsResponse> getRecentSongs(
-      {String? bq, bool forceRefresh = false}) {
-    return _apiService.getRecentSongs(bq: bq, forceRefresh: forceRefresh);
-  }
 }
 
 /// 音乐仓库提供者已移至ProviderManager.musicRepositoryProvider

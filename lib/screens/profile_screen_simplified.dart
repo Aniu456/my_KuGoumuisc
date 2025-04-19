@@ -6,6 +6,7 @@ import '../utils/image_utils.dart';
 import '../services/api_service.dart';
 import '../core/providers/provider_manager.dart';
 import '../features/auth/profile_controller_simplified.dart';
+import 'recent_plays_screen.dart';
 
 /// 简化版个人中心页面
 class ProfileScreenSimplified extends ConsumerStatefulWidget {
@@ -381,21 +382,15 @@ class _ProfileScreenSimplifiedState
         // 使用 Column + ListTile 替代 Card
         ListTile(
           contentPadding: listTilePadding,
-          leading: Icon(Icons.favorite_border, color: iconColor),
-          title: Text('我的收藏', style: TextStyle(color: textColor)),
-          trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
-          onTap: () {
-            AppDialog.showInfo(context: context, message: '功能待实现');
-          },
-        ),
-        Divider(height: 1, color: Colors.grey[200]), // 分割线
-        ListTile(
-          contentPadding: listTilePadding,
           leading: Icon(Icons.history, color: iconColor),
-          title: Text('最近播放', style: TextStyle(color: textColor)),
+          title: Text('已缓存歌曲', style: TextStyle(color: textColor)),
           trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
           onTap: () {
-            AppDialog.showInfo(context: context, message: '功能待实现');
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const RecentPlaysScreen(),
+              ),
+            );
           },
         ),
         Divider(height: 1, color: Colors.grey[200]),

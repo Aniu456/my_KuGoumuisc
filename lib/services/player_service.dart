@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/play_song_info.dart';
 import '../services/api_service.dart';
-import 'dart:math';
-
-// 导入缺失的math库
+import '../services/storage/cache_manager.dart';
 import 'dart:math' as math;
+import 'dart:math';
 
 enum PlayMode {
   loop, // 列表循环
@@ -18,8 +18,7 @@ class PlayerService extends ChangeNotifier {
   late final ApiService _apiService;
   final AudioPlayer _audioPlayer;
   bool _isInitialized = false;
-  // TODO: Implement AudioCacheManager
-  // late AudioCacheManager _cacheManager;
+  late CacheManager _cacheManager;
 
   // 播放状态
   PlaySongInfo? _currentSongInfo;
@@ -105,8 +104,8 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> _initCacheManager() async {
     if (!_isInitialized) {
-      // TODO: Implement cache manager
-      // _cacheManager = await AudioCacheManager.getInstance();
+      final prefs = await SharedPreferences.getInstance();
+      _cacheManager = CacheManager(prefs);
       _isInitialized = true;
     }
   }
@@ -184,13 +183,39 @@ class PlayerService extends ChangeNotifier {
     try {
       print('尝试从网络播放: ${songInfo.title}');
 
-      // 获取歌曲URL
-      final urlResponse =
-          await _apiService.getSongUrl(songInfo.hash, songInfo.albumId ?? '');
+      String? playUrl;
 
-      // 防止空URL
-      if (urlResponse.isEmpty) {
-        throw Exception('获取播放URL失败');
+      // 首先尝试从缓存获取URL
+      if (_isInitialized) {
+        playUrl = _cacheManager.getCachedSongUrl(songInfo.hash);
+        if (playUrl != null && playUrl.isNotEmpty) {
+          print('使用缓存的URL播放: $playUrl');
+        }
+      }
+
+      // 如果缓存中没有URL，则从网络获取
+      if (playUrl == null || playUrl.isEmpty) {
+        try {
+          playUrl = await _apiService.getSongUrl(
+              songInfo.hash, songInfo.albumId ?? '');
+
+          // 防止空URL
+          if (playUrl.isEmpty) {
+            throw Exception('获取播放URL失败');
+          }
+        } catch (e) {
+          print('从网络获取URL失败: $e');
+          // 如果网络获取失败，再次检查缓存
+          if (_isInitialized) {
+            playUrl = _cacheManager.getCachedSongUrl(songInfo.hash);
+            if (playUrl == null || playUrl.isEmpty) {
+              throw Exception('无法获取播放URL，网络和缓存都失败');
+            }
+            print('网络失败，使用缓存URL: $playUrl');
+          } else {
+            throw Exception('无法获取播放URL: $e');
+          }
+        }
       }
 
       // 设置HTTP头，增强兼容性
@@ -202,7 +227,6 @@ class PlayerService extends ChangeNotifier {
       };
 
       // 尝试将HTTP URL转换为HTTPS（解决明文HTTP流量问题）
-      String playUrl = urlResponse;
       print('原始播放URL: $playUrl');
 
       try {
@@ -227,7 +251,7 @@ class PlayerService extends ChangeNotifier {
               // 确保播放器已停止
               await _audioPlayer.stop();
               print('尝试使用原始URL: $playUrl');
-              await _audioPlayer.setUrl(playUrl, headers: headers);
+              await _audioPlayer.setUrl(playUrl!, headers: headers);
               print('原始URL设置成功');
             } catch (e) {
               print('所有URL尝试都失败: $e');
@@ -240,12 +264,24 @@ class PlayerService extends ChangeNotifier {
         }
       }
 
-      // TODO: 实现缓存功能
-      // try {
-      //   unawaited(_cacheManager.cacheAudio(songInfo));
-      // } catch (e) {
-      //   print('缓存失败: $e');
-      // }
+      // 缓存歌曲信息
+      try {
+        // 获取歌曲详情
+        final songDetail = await _apiService.getSongDetail(songInfo.hash);
+        if (songDetail != null) {
+          // 缓存歌曲详情
+          await _cacheManager.cacheSong(songInfo.hash, songDetail);
+          print('歌曲信息缓存成功: ${songInfo.title}');
+
+          // 缓存歌曲URL
+          if (playUrl.isNotEmpty) {
+            await _cacheManager.cacheSongUrl(songInfo.hash, playUrl);
+            print('歌曲URL缓存成功: $playUrl');
+          }
+        }
+      } catch (e) {
+        print('缓存歌曲信息失败: $e');
+      }
     } catch (e) {
       print('网络播放设置失败: $e');
       throw Exception(
@@ -257,14 +293,51 @@ class PlayerService extends ChangeNotifier {
   Future<void> _loadLyrics(String hash) async {
     try {
       print('开始加载歌词，hash: $hash');
-      final lyrics = await _apiService.getFullLyric(hash);
 
-      if (lyrics.isNotEmpty) {
-        _lyrics = lyrics;
-        print('歌词加载成功，长度: ${lyrics.length}');
-      } else {
-        _lyrics = '暂无歌词';
-        print('未找到歌词');
+      // 首先尝试从缓存获取歌词
+      String? lyrics;
+      if (_isInitialized) {
+        lyrics = _cacheManager.getCachedLyric(hash);
+        if (lyrics != null && lyrics.isNotEmpty) {
+          print('使用缓存的歌词');
+          _lyrics = lyrics;
+          notifyListeners();
+        }
+      }
+
+      // 如果缓存中没有歌词，则从网络获取
+      if (lyrics == null || lyrics.isEmpty) {
+        try {
+          lyrics = await _apiService.getFullLyric(hash);
+
+          if (lyrics.isNotEmpty) {
+            _lyrics = lyrics;
+            print('歌词加载成功，长度: ${lyrics.length}');
+
+            // 缓存歌词
+            if (_isInitialized) {
+              await _cacheManager.cacheLyric(hash, lyrics);
+              print('歌词缓存成功');
+            }
+          } else {
+            _lyrics = '暂无歌词';
+            print('未找到歌词');
+          }
+        } catch (e) {
+          print('从网络加载歌词失败: $e');
+          // 如果网络获取失败，再次检查缓存
+          if (_isInitialized) {
+            lyrics = _cacheManager.getCachedLyric(hash);
+            if (lyrics != null && lyrics.isNotEmpty) {
+              _lyrics = lyrics;
+              print('网络失败，使用缓存歌词');
+            } else {
+              _lyrics = '无法加载歌词';
+            }
+          } else {
+            _lyrics = '加载歌词失败';
+          }
+        }
       }
 
       // 处理歌词格式，确保带有时间标签
@@ -274,16 +347,15 @@ class PlayerService extends ChangeNotifier {
             .split('\n')
             .where((line) => line.trim().isNotEmpty)
             .toList();
-        final formattedLyrics = <String>[];
 
-        // 平均分配时间标签
-        final totalDuration = _duration.inMilliseconds;
-        final lineCount = lines.length;
+        if (lines.isNotEmpty) {
+          final formattedLyrics = <String>[];
+          // 估算每行歌词的时间间隔（假设歌曲平均3分钟，平均每行显示3秒）
+          final interval = _duration.inMilliseconds > 0
+              ? _duration.inMilliseconds / lines.length
+              : 3000.0; // 默认3秒
 
-        if (lineCount > 0 && totalDuration > 0) {
-          final interval = totalDuration / lineCount;
-
-          for (int i = 0; i < lineCount; i++) {
+          for (int i = 0; i < lines.length; i++) {
             final time = Duration(milliseconds: (i * interval).round());
             final minutes =
                 time.inMinutes.remainder(60).toString().padLeft(2, '0');

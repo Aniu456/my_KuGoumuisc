@@ -162,6 +162,7 @@ class _LyricWidgetState extends ConsumerState<LyricWidget>
       onTap: () {
         // 点击歌词播放相应的进度
         final playerService = ref.read(ProviderManager.playerServiceProvider);
+        // line.time 已经是 Duration 类型，直接传递给 seek 方法
         playerService.seek(line.time);
       },
       child: Container(

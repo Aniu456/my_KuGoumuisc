@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../core/providers/provider_manager.dart';
 
@@ -113,6 +115,7 @@ class ProfileController extends StateNotifier<ProfileState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
+      // 尝试从 API 获取用户信息
       final response = await _apiService.getUserDetail();
 
       if (response['status'] == 1 && response['data'] != null) {
@@ -154,6 +157,59 @@ class ProfileController extends StateNotifier<ProfileState> {
         throw Exception(response['error_msg'] ?? '获取用户信息失败');
       }
     } catch (e) {
+      print('获取用户信息失败: $e');
+
+      // 如果网络请求失败，尝试使用缓存的用户数据
+      try {
+        // 从 SharedPreferences 中获取缓存的用户数据
+        final cachedUserData = await SharedPreferences.getInstance();
+        final userData = cachedUserData.getString('user_data');
+
+        if (userData != null && userData.isNotEmpty) {
+          print('使用缓存的用户数据');
+          final userDataMap = json.decode(userData);
+
+          try {
+            final userProfile = UserProfile.fromJson(userDataMap);
+            state = state.copyWith(
+              isLoading: false,
+              userProfile: userProfile,
+            );
+            return; // 成功使用缓存数据，直接返回
+          } catch (parseError) {
+            print('解析缓存的用户数据失败: $parseError');
+            // 如果解析失败，继续尝试手动解析
+            bool isVipCatch = false;
+            if (userDataMap['is_vip'] != null) {
+              if (userDataMap['is_vip'] is int) {
+                isVipCatch = userDataMap['is_vip'] == 1;
+              } else {
+                isVipCatch = userDataMap['is_vip']?.toString() == '1';
+              }
+            }
+
+            final userProfile = UserProfile(
+              userId: userDataMap['userid']?.toString() ?? '',
+              nickname: userDataMap['nickname'] ?? '未知用户',
+              pic: userDataMap['pic'],
+              gender: userDataMap['gender']?.toString() == '1'
+                  ? '男'
+                  : (userDataMap['gender']?.toString() == '2' ? '女' : null),
+              isVip: isVipCatch,
+            );
+
+            state = state.copyWith(
+              isLoading: false,
+              userProfile: userProfile,
+            );
+            return; // 成功使用缓存数据，直接返回
+          }
+        }
+      } catch (cacheError) {
+        print('使用缓存数据失败: $cacheError');
+      }
+
+      // 如果网络和缓存都失败，设置错误状态
       state = state.copyWith(
         isLoading: false,
         errorMessage: e.toString(),

@@ -41,10 +41,23 @@ class PlaySongInfo {
 
   // 从 SearchSong 模型转换
   factory PlaySongInfo.fromSearchSong(SearchSong song) {
+    // 解析歌曲名和歌手名
+    // 服务器返回的格式是: "作者名-歌曲名" (例如: "夏小夏、峰峰疯了 - 天下 (顾不顾将相王侯)(超燃版)")
+    String artistName = song.singers.map((s) => s.name).join(', ');
+    String titleName = song.songName;
+
+    if (song.fileName.contains(" - ")) {
+      final parts = song.fileName.split(" - ");
+      if (parts.length >= 2) {
+        artistName = parts[0].trim();
+        titleName = parts.sublist(1).join(" - ").trim();
+      }
+    }
+    
     return PlaySongInfo(
       hash: song.fileHash,
-      title: song.songName,
-      artist: song.singers.map((s) => s.name).join(', '),
+      title: titleName,
+      artist: artistName,
       cover: song.image,
       mixsongid: song.mixSongId,
       duration: song.duration,
