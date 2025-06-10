@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class SongCache {
   final String hash; // 歌曲唯一标识
   final String title; // 歌曲名称

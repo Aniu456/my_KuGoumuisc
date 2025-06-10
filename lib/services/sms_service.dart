@@ -2,7 +2,6 @@ import 'dart:async';
 import 'api_service.dart';
 
 class SmsService {
-  static const int _cooldownDuration = 60;
   final ApiService _apiService;
 
   SmsService(this._apiService);

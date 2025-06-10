@@ -13,7 +13,7 @@ import '../pages/search_page.dart';
 import '../pages/local_songs_page.dart';
 import 'package:provider/provider.dart';
 import '../main.dart'; // 导入ThemeProvider类
-import 'skeleton_loader.dart'; // 导入骨架屏组件
+import 'skeleton_loader.dart'; // 导入r骨架屏组件
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -25,14 +25,11 @@ class ProfileTab extends StatefulWidget {
 class _ProfileTabState extends State<ProfileTab>
     with AutomaticKeepAliveClientMixin {
   // 常量定义
-  static const double _borderRadius = 8.0;
-  static const EdgeInsets _contentPadding = EdgeInsets.fromLTRB(10, 6, 10, 0);
 
   // 状态变量
   List<Playlist> _playlists = [];
   int _playlistCount = 0;
   Playlist _likedPlaylist = Playlist.empty();
-  final bool _isPurchasedExpanded = false;
   int _localSongCount = 0;
   int _recentSongsCount = 0;
   bool _isLoading = false;
@@ -266,8 +263,8 @@ class _ProfileTabState extends State<ProfileTab>
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.blue[600]!,
-          Colors.blue[50]!,
+          Theme.of(context).primaryColor, // 使用主题主色
+          Theme.of(context).primaryColor.withOpacity(0.1), // 使用主题主色并降低透明度
         ],
         stops: const [0.0, 0.7],
       ),
@@ -365,7 +362,7 @@ class _ProfileTabState extends State<ProfileTab>
       margin: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor, // 使用主题卡片颜色
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -456,14 +453,17 @@ class _ProfileTabState extends State<ProfileTab>
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).primaryColor,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.color, // 文本颜色跟随主题
                       ),
                     ),
                     if (isAuthenticated && user!.isVipValid)
                       Text(
                         '会员 · 剩余${user.vipRemainingDays}天',
                         style: TextStyle(
-                          color: Colors.amber[800],
+                          color: Colors.amber[800], // VIP颜色保持不变
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
@@ -496,7 +496,10 @@ class _ProfileTabState extends State<ProfileTab>
                   Text(
                     'ID: ${user!.userId}',
                     style: TextStyle(
-                      color: Colors.grey[600],
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.color, // 文本颜色跟随主题
                       fontSize: 11,
                     ),
                   ),
@@ -504,7 +507,10 @@ class _ProfileTabState extends State<ProfileTab>
                   Text(
                     '登录后享受更多功能',
                     style: TextStyle(
-                      color: Colors.grey[600],
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.color, // 文本颜色跟随主题
                       fontSize: 13,
                     ),
                   ),
@@ -525,7 +531,7 @@ class _ProfileTabState extends State<ProfileTab>
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor, // 使用主题卡片颜色
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -543,15 +549,10 @@ class _ProfileTabState extends State<ProfileTab>
             label: themeProvider.isDarkMode ? '深色' : '浅色',
             onTap: () {
               context.read<ThemeProvider>().toggleTheme();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    context.read<ThemeProvider>().isDarkMode
-                        ? '已切换为深色模式'
-                        : '已切换为浅色模式',
-                  ),
-                  duration: const Duration(seconds: 1),
-                ),
+              _showCenterToast(
+                context.read<ThemeProvider>().isDarkMode
+                    ? '已切换为深色模式'
+                    : '已切换为浅色模式',
               );
             },
           ),
@@ -582,14 +583,10 @@ class _ProfileTabState extends State<ProfileTab>
                   final cacheManager = await AudioCacheManager.getInstance();
                   await cacheManager.clearAllCached();
                   await _loadLocalSongCount();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('缓存已清除')),
-                  );
+                  _showCenterToast('缓存已清除');
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('清除缓存失败: $e')),
-                    );
+                    _showCenterToast('清除缓存失败: $e');
                   }
                 }
               }
@@ -632,7 +629,9 @@ class _ProfileTabState extends State<ProfileTab>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
+                color: Theme.of(context)
+                    .primaryColor
+                    .withOpacity(0.1), // 图标背景色跟随主题
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -644,9 +643,11 @@ class _ProfileTabState extends State<ProfileTab>
             const SizedBox(height: 6),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
+                color:
+                    Theme.of(context).textTheme.bodyMedium?.color, // 文本颜色跟随主题
               ),
             ),
           ],
@@ -666,7 +667,7 @@ class _ProfileTabState extends State<ProfileTab>
             height: 4,
             margin: const EdgeInsets.only(bottom: 20),
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: Theme.of(context).dividerColor, // 使用主题分隔线颜色
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -730,7 +731,7 @@ class _ProfileTabState extends State<ProfileTab>
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor, // 使用主题卡片颜色
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -776,7 +777,7 @@ class _ProfileTabState extends State<ProfileTab>
     return Container(
       width: 1,
       height: 35,
-      color: Colors.grey[200],
+      color: Theme.of(context).dividerColor, // 使用主题分隔线颜色
     );
   }
 
@@ -797,7 +798,7 @@ class _ProfileTabState extends State<ProfileTab>
             width: 50,
             height: 50,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withOpacity(0.1), // 图标背景色跟随主题
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
@@ -817,9 +818,10 @@ class _ProfileTabState extends State<ProfileTab>
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
+              color: Theme.of(context).textTheme.bodyMedium?.color, // 文本颜色跟随主题
             ),
           ),
           const SizedBox(height: 2),
@@ -908,7 +910,7 @@ class _ProfileTabState extends State<ProfileTab>
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor, // 使用主题卡片颜色
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -926,7 +928,7 @@ class _ProfileTabState extends State<ProfileTab>
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor, // 使用主题卡片颜色
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -939,23 +941,27 @@ class _ProfileTabState extends State<ProfileTab>
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
             child: Row(
               children: [
                 Container(
                   width: 3,
-                  height: 16,
+                  height: 12,
                   decoration: BoxDecoration(
                     color: Theme.of(context).primaryColor,
                     borderRadius: BorderRadius.circular(1.5),
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   '我的歌单',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyLarge
+                        ?.color, // 文本颜色跟随主题
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -963,14 +969,16 @@ class _ProfileTabState extends State<ProfileTab>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
+                    color: Theme.of(context)
+                        .primaryColor
+                        .withOpacity(0.1), // 使用主题主色并降低透明度
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     isAuthenticated ? '$_playlistCount' : '0',
                     style: TextStyle(
                       color: Theme.of(context).primaryColor,
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -985,7 +993,9 @@ class _ProfileTabState extends State<ProfileTab>
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: Colors.blue[50],
+                      color: Theme.of(context)
+                          .primaryColor
+                          .withOpacity(0.1), // 使用主题主色并降低透明度
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
@@ -1007,16 +1017,11 @@ class _ProfileTabState extends State<ProfileTab>
             ),
           ),
           if (isAuthenticated && _playlists.isNotEmpty)
-            ListView.separated(
+            ListView.builder(
+              padding: EdgeInsets.zero,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _playlists.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 1,
-                indent: 16,
-                endIndent: 16,
-                color: Colors.grey[200],
-              ),
               itemBuilder: (context, index) {
                 final playlist = _playlists[index];
                 return InkWell(
@@ -1034,17 +1039,19 @@ class _ProfileTabState extends State<ProfileTab>
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
+                      horizontal: 8,
                       vertical: 10,
                     ),
                     child: Row(
                       children: [
                         Container(
-                          width: 50,
-                          height: 50,
+                          width: 46,
+                          height: 46,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                            color: Colors.grey[100],
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withOpacity(0.05),
@@ -1061,18 +1068,18 @@ class _ProfileTabState extends State<ProfileTab>
                                   errorBuilder: (context, error, stackTrace) {
                                     return Icon(
                                       Icons.music_note,
-                                      color: Colors.grey[400],
-                                      size: 24,
+                                      color: Theme.of(context).iconTheme.color,
+                                      size: 20,
                                     );
                                   },
                                 )
                               : Icon(
                                   Icons.music_note,
-                                  color: Colors.grey[400],
-                                  size: 24,
+                                  color: Theme.of(context).iconTheme.color,
+                                  size: 20,
                                 ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -1082,9 +1089,13 @@ class _ProfileTabState extends State<ProfileTab>
                                 playlist.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 15,
+                                style: TextStyle(
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w500,
+                                  color: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.color,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -1096,13 +1107,15 @@ class _ProfileTabState extends State<ProfileTab>
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
+                                      color: Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
                                       '${playlist.count}首',
                                       style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 9,
                                         color: Theme.of(context).primaryColor,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -1116,7 +1129,7 @@ class _ProfileTabState extends State<ProfileTab>
                         Icon(
                           Icons.arrow_forward_ios,
                           size: 14,
-                          color: Colors.grey[400],
+                          color: Theme.of(context).iconTheme.color,
                         ),
                       ],
                     ),
@@ -1132,13 +1145,16 @@ class _ProfileTabState extends State<ProfileTab>
                   Icon(
                     Icons.playlist_add,
                     size: 48,
-                    color: Colors.grey[300],
+                    color: Theme.of(context).iconTheme.color, // 图标颜色跟随主题
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '还没有创建歌单',
                     style: TextStyle(
-                      color: Colors.grey[500],
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.color, // 文本颜色跟随主题
                       fontSize: 14,
                     ),
                   ),
@@ -1169,13 +1185,16 @@ class _ProfileTabState extends State<ProfileTab>
                   Icon(
                     Icons.lock,
                     size: 48,
-                    color: Colors.grey[300],
+                    color: Theme.of(context).iconTheme.color, // 图标颜色跟随主题
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '登录后查看歌单',
                     style: TextStyle(
-                      color: Colors.grey[500],
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.color, // 文本颜色跟随主题
                       fontSize: 14,
                     ),
                   ),
@@ -1202,6 +1221,41 @@ class _ProfileTabState extends State<ProfileTab>
       ),
     );
   }
+
+  // 显示居中Toast
+  void _showCenterToast(String message) {
+    OverlayEntry overlayEntry;
+    overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).size.height * 0.8, // 调整垂直位置
+        width: MediaQuery.of(context).size.width,
+        child: Align(
+          alignment: Alignment.center,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(25.0),
+              ),
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(overlayEntry);
+
+    Future.delayed(const Duration(seconds: 1, milliseconds: 500)).then((value) {
+      overlayEntry.remove();
+    });
+  }
 }
 
 // 功能类型枚举
@@ -1211,36 +1265,36 @@ enum FeatureType {
   local,
 }
 
-class _CategoryTab extends StatelessWidget {
-  final bool isSelected;
-  final String text;
+// class _CategoryTab extends StatelessWidget {
+//   final bool isSelected;
+//   final String text;
 
-  const _CategoryTab({
-    required this.isSelected,
-    required this.text,
-  });
+//   const _CategoryTab({
+//     required this.isSelected,
+//     required this.text,
+//   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          text,
-          style: TextStyle(
-            color: isSelected ? Colors.blue : Colors.grey,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          width: 20,
-          height: 2,
-          color: isSelected ? Colors.blue : Colors.transparent,
-        ),
-      ],
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Column(
+//       children: [
+//         Text(
+//           text,
+//           style: TextStyle(
+//             color: isSelected ? Colors.blue : Colors.grey,
+//             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+//           ),
+//         ),
+//         const SizedBox(height: 4),
+//         Container(
+//           width: 20,
+//           height: 2,
+//           color: isSelected ? Colors.blue : Colors.transparent,
+//         ),
+//       ],
+//     );
+//   }
+// }
 
 // 播放器页面核心设计
 class MusicPlayerPage extends StatefulWidget {

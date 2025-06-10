@@ -139,13 +139,13 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
                         '更多',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.grey[600],
+                          color: Theme.of(context).textTheme.bodySmall?.color,
                         ),
                       ),
                       Icon(
                         Icons.chevron_right,
                         size: 14,
-                        color: Colors.grey[600],
+                        color: Theme.of(context).iconTheme.color,
                       ),
                     ],
                   ),
@@ -179,14 +179,14 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
                     Icon(
                       Icons.queue_music,
                       size: 32,
-                      color: Colors.grey[300],
+                      color: Theme.of(context).iconTheme.color,
                     ),
                     const SizedBox(height: 6),
                     Text(
                       '暂无播放记录',
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.grey[400],
+                        color: Theme.of(context).textTheme.bodySmall?.color,
                       ),
                     ),
                   ],
@@ -227,10 +227,17 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
                                       fit: BoxFit.cover,
                                       errorBuilder:
                                           (context, error, stackTrace) {
-                                        return Icon(
-                                          Icons.music_note,
-                                          color: Colors.grey[400],
-                                          size: 24,
+                                        return Container(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainerHighest,
+                                          child: Icon(
+                                            Icons.music_note,
+                                            color: Theme.of(context)
+                                                .iconTheme
+                                                .color,
+                                            size: 20,
+                                          ),
                                         );
                                       },
                                     )
@@ -287,9 +294,11 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
                           song.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
+                            color:
+                                Theme.of(context).textTheme.bodyMedium?.color,
                           ),
                         ),
                         // 歌手名
@@ -299,7 +308,7 @@ class _RecentSongsSectionState extends State<RecentSongsSection> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 10,
-                            color: Colors.grey[600],
+                            color: Theme.of(context).textTheme.bodySmall?.color,
                           ),
                         ),
                       ],

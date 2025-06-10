@@ -6,12 +6,12 @@ import '../models/search_response.dart';
 import '../models/play_song_info.dart';
 import '../models/song_mv.dart';
 
-/// API服务类
-/// 负责处理所有与后端服务器的HTTP请求
 /// 使用Dio作为HTTP客户端，SharedPreferences进行本地数据存储
 class ApiService {
   /// 服务器基础URL
-  static const String baseUrl = 'http://8.148.7.143:3000';
+  // static const String baseUrl = 'http://8.148.7.143:3000';
+  // static const String baseUrl = 'http://10.0.2.2:3000';
+  static const String baseUrl = 'http://192.168.64.52:3000';
 
   /// 本地存储的歌单缓存键名
   static const String _playlistsCacheKey = 'playlists_cache';
@@ -444,7 +444,13 @@ class ApiService {
       );
 
       if (response.data['status'] == 1) {
-        return List<Map<String, dynamic>>.from(response.data['data']['info']);
+        final songsData = response.data['data']?['songs'];
+        if (songsData != null && songsData is List) {
+          return List<Map<String, dynamic>>.from(songsData);
+        } else {
+          print('API返回的data或songs字段为空或非列表类型');
+          return [];
+        }
       } else {
         throw Exception(response.data['error_msg'] ?? '获取歌单歌曲失败');
       }

@@ -104,6 +104,8 @@ class MyApp extends StatelessWidget {
               scaffoldBackgroundColor: const Color(0xFF121212),
               brightness: Brightness.dark,
               useMaterial3: true,
+              cardColor: const Color(0xFF202020),
+              dividerColor: Colors.grey[800],
               colorScheme: ColorScheme.dark(
                 primary: const Color(0xFF2196F3),
                 secondary: Colors.blue[300]!,
@@ -271,7 +273,7 @@ class _MainPageState extends State<MainPage>
                 width: 260,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(27.5),
                   boxShadow: [
                     BoxShadow(

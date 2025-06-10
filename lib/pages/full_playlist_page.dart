@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/player_service.dart';
-import '../models/song.dart';
 import '../models/play_song_info.dart';
 
 class FullPlaylistPage extends StatefulWidget {

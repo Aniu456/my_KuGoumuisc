@@ -43,7 +43,11 @@ class PlaySongInfo {
   factory PlaySongInfo.fromSearchSong(SearchSong song) {
     return PlaySongInfo(
       hash: song.fileHash,
-      title: song.songName,
+      title: song.songName.isNotEmpty
+          ? song.songName
+          : song.fileName.isNotEmpty
+              ? song.fileName
+              : '未知歌曲',
       artist: song.singers.map((s) => s.name).join(', '),
       cover: song.image,
       mixsongid: song.mixSongId,

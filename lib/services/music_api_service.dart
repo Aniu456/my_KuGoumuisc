@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import '../models/user.dart';
 
 class MusicApiService {
   static const String baseUrl = 'http://8.148.7.143:3000';

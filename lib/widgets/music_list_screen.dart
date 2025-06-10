@@ -30,27 +30,6 @@ class _Constants {
   static const int pageSize = 30;
   static const Duration animationDuration = Duration(milliseconds: 500);
   static const Duration rotationDuration = Duration(seconds: 10);
-
-  static const EdgeInsets contentPadding = EdgeInsets.all(16.0);
-  static const EdgeInsets itemPadding =
-      EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0);
-
-  // 更新为更鲜艳的蓝色
-  static final gradientColors = [
-    Color(0xFF4169E1),
-    Color(0xFF3448C5),
-  ];
-
-  static final playerGradientColors = [
-    Color(0xFF4169E1),
-    Color(0xFF3448C5),
-  ];
-
-  // 背景色
-  static final backgroundColor = Color(0xFF4169E1);
-
-  // 卡片颜色
-  static final cardColor = Colors.white;
 }
 
 class MusicListScreen extends StatefulWidget {
@@ -272,59 +251,30 @@ class _MusicListScreenState extends State<MusicListScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       // 设置背景色为蓝色
-      backgroundColor: _Constants.backgroundColor,
-      extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          // 标题和封面区域
-          _buildHeader(),
-          // 歌曲列表区域
-          Expanded(
-            child: _buildSongListCard(),
-          ),
-        ],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // extendBodyBehindAppBar: true,
+      // appBar: _buildAppBar(),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 标题和封面区域
+            _buildHeader(),
+            // 歌曲列表区域
+            Expanded(
+              child: _buildSongListCard(),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: _buildFloatingButtons(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
-  // 构建AppBar
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: false,
-      title: Text(
-        widget.title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.search, color: Colors.white, size: 22),
-          onPressed: () => _showSearch(),
-        ),
-        IconButton(
-          icon: const Icon(Icons.more_vert, color: Colors.white, size: 22),
-          onPressed: _showSortMenu,
-        ),
-      ],
-    );
-  }
-
   // 构建头部区域（标题和封面）
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 80, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -372,9 +322,9 @@ class _MusicListScreenState extends State<MusicListScreen>
               children: [
                 Text(
                   widget.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                   maxLines: 2,
@@ -385,8 +335,12 @@ class _MusicListScreenState extends State<MusicListScreen>
                   Text(
                     '${_filteredSongs.length}首歌曲',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 16,
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.color
+                          ?.withOpacity(0.8),
+                      fontSize: 14,
                     ),
                   ),
                 const SizedBox(height: 12),
@@ -402,8 +356,8 @@ class _MusicListScreenState extends State<MusicListScreen>
                     icon: const Icon(Icons.play_circle_filled, size: 20),
                     label: const Text('播放全部'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: _Constants.backgroundColor,
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -423,13 +377,44 @@ class _MusicListScreenState extends State<MusicListScreen>
   Widget _buildSongListCard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(30),
           topRight: Radius.circular(30),
         ),
       ),
-      child: _buildMusicList(),
+      child: Column(
+        children: [
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.arrow_back_ios,
+                      color: Theme.of(context).iconTheme.color, size: 24),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                const Spacer(), // 占据中间空间
+                IconButton(
+                  icon: Icon(Icons.search,
+                      color: Theme.of(context).iconTheme.color, size: 24),
+                  onPressed: () => _showSearch(),
+                ),
+                IconButton(
+                  icon: Icon(Icons.more_vert,
+                      color: Theme.of(context).iconTheme.color, size: 24),
+                  onPressed: _showSortMenu,
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _buildMusicList(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -441,10 +426,9 @@ class _MusicListScreenState extends State<MusicListScreen>
 
     return RefreshIndicator(
       onRefresh: _loadMusicList,
-      color: _Constants.backgroundColor,
+      color: Theme.of(context).primaryColor,
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.only(top: 20),
         itemCount: _filteredSongs.length + (_hasMore ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _filteredSongs.length) {
@@ -467,22 +451,21 @@ class _MusicListScreenState extends State<MusicListScreen>
     final isPlaying = playerService.isPlaying && isCurrentSong;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: isCurrentSong
-            ? _Constants.backgroundColor.withOpacity(0.05)
+            ? Theme.of(context).primaryColor.withOpacity(0.05)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
         leading: Stack(
           alignment: Alignment.center,
           children: [
             // 歌曲封面
             Container(
-              width: 50,
-              height: 50,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
@@ -501,20 +484,24 @@ class _MusicListScreenState extends State<MusicListScreen>
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            color: Colors.grey[200],
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
                             child: Icon(
                               Icons.music_note,
-                              color: Colors.grey[400],
+                              color: Theme.of(context).iconTheme.color,
                               size: 24,
                             ),
                           );
                         },
                       )
                     : Container(
-                        color: Colors.grey[200],
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
                         child: Icon(
                           Icons.music_note,
-                          color: Colors.grey[400],
+                          color: Theme.of(context).iconTheme.color,
                           size: 24,
                         ),
                       ),
@@ -543,29 +530,31 @@ class _MusicListScreenState extends State<MusicListScreen>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: isCurrentSong ? _Constants.backgroundColor : Colors.black87,
+            color: isCurrentSong
+                ? Theme.of(context).primaryColor
+                : Theme.of(context).textTheme.bodyMedium?.color,
             fontWeight: isCurrentSong ? FontWeight.bold : FontWeight.normal,
-            fontSize: 16,
+            fontSize: 14,
           ),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(top: 2),
           child: Text(
             song.artists,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: isCurrentSong
-                  ? _Constants.backgroundColor.withOpacity(0.7)
-                  : Colors.grey[600],
-              fontSize: 14,
+                  ? Theme.of(context).primaryColor.withOpacity(0.7)
+                  : Theme.of(context).textTheme.bodySmall?.color,
+              fontSize: 11,
             ),
           ),
         ),
         trailing: IconButton(
           icon: Icon(
             Icons.more_vert,
-            color: Colors.grey[500],
+            color: Theme.of(context).iconTheme.color,
             size: 20,
           ),
           onPressed: () => _showSongOptions(song),
@@ -579,7 +568,7 @@ class _MusicListScreenState extends State<MusicListScreen>
   void _showSongOptions(Song song) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -719,9 +708,12 @@ class _SortMenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: isSelected
-          ? const Icon(Icons.check, color: Colors.blue)
+          ? Icon(Icons.check, color: Theme.of(context).primaryColor)
           : const SizedBox(width: 24),
-      title: Text(title),
+      title: Text(
+        title,
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
       onTap: onTap,
     );
   }
@@ -743,29 +735,34 @@ class _SongMenuSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: const Icon(Icons.play_arrow),
-            title: const Text('播放'),
+            leading: Icon(Icons.play_arrow,
+                color: Theme.of(context).iconTheme.color),
+            title: Text('播放', style: Theme.of(context).textTheme.bodyMedium),
             onTap: onPlayTap,
           ),
           ListTile(
-            leading: const Icon(Icons.playlist_add),
-            title: const Text('添加到播放列表'),
+            leading: Icon(Icons.playlist_add,
+                color: Theme.of(context).iconTheme.color),
+            title:
+                Text('添加到播放列表', style: Theme.of(context).textTheme.bodyMedium),
             onTap: () {
               Navigator.pop(context);
               // TODO: 实现添加到播放列表功能
             },
           ),
           ListTile(
-            leading: const Icon(Icons.favorite_border),
-            title: const Text('收藏'),
+            leading: Icon(Icons.favorite_border,
+                color: Theme.of(context).iconTheme.color),
+            title: Text('收藏', style: Theme.of(context).textTheme.bodyMedium),
             onTap: () {
               Navigator.pop(context);
               // TODO: 实现收藏功能
             },
           ),
           ListTile(
-            leading: const Icon(Icons.share),
-            title: const Text('分享'),
+            leading:
+                Icon(Icons.share, color: Theme.of(context).iconTheme.color),
+            title: Text('分享', style: Theme.of(context).textTheme.bodyMedium),
             onTap: () {
               Navigator.pop(context);
               // TODO: 实现分享功能
@@ -791,7 +788,10 @@ class _ScrollTopButton extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: _Constants.gradientColors,
+          colors: [
+            Theme.of(context).primaryColor,
+            Theme.of(context).primaryColor.withOpacity(0.7),
+          ],
         ),
         shape: BoxShape.circle,
         boxShadow: [
@@ -807,9 +807,9 @@ class _ScrollTopButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           customBorder: const CircleBorder(),
-          child: const Icon(
+          child: Icon(
             Icons.vertical_align_top,
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onPrimary,
             size: 20,
           ),
         ),
@@ -832,7 +832,10 @@ class _CurrentSongButton extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: _Constants.gradientColors,
+          colors: [
+            Theme.of(context).primaryColor,
+            Theme.of(context).primaryColor.withOpacity(0.7),
+          ],
         ),
         shape: BoxShape.circle,
         boxShadow: [
@@ -848,9 +851,9 @@ class _CurrentSongButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           customBorder: const CircleBorder(),
-          child: const Icon(
+          child: Icon(
             Icons.my_location,
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onPrimary,
             size: 20,
           ),
         ),
@@ -877,11 +880,14 @@ class _PlayerFloatingButton extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: _Constants.playerGradientColors,
+          colors: [
+            Theme.of(context).primaryColor,
+            Theme.of(context).primaryColor.withOpacity(0.7),
+          ],
         ),
         shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.white.withOpacity(0.8),
+          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
           width: 4,
         ),
         boxShadow: [
@@ -904,7 +910,7 @@ class _PlayerFloatingButton extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withOpacity(0.2),
+                color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.2),
                 width: 4,
               ),
             ),
@@ -920,9 +926,12 @@ class _PlayerFloatingButton extends StatelessWidget {
                       height: 65,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Container(
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.music_note,
-                            color: Colors.white, size: 30),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        child: Icon(Icons.music_note,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            size: 30),
                       ),
                     ),
                   ),
@@ -959,7 +968,7 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
   List<Widget> buildActions(BuildContext context) {
     return [
       IconButton(
-        icon: const Icon(Icons.clear),
+        icon: Icon(Icons.clear, color: Theme.of(context).iconTheme.color),
         onPressed: () => query = '',
       ),
     ];
@@ -968,7 +977,7 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
   @override
   Widget buildLeading(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.arrow_back),
+      icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
       onPressed: () => close(context, null),
     );
   }
@@ -981,7 +990,9 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
 
   Widget _buildSearchResults(BuildContext context) {
     if (query.isEmpty) {
-      return const Center(child: Text('输入歌曲名称或歌手名称搜索'));
+      return Center(
+          child: Text('输入歌曲名称或歌手名称搜索',
+              style: Theme.of(context).textTheme.bodyMedium));
     }
 
     final results = songs.where((song) {
@@ -989,7 +1000,9 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
     }).toList();
 
     if (results.isEmpty) {
-      return const Center(child: Text('未找到相关歌曲'));
+      return Center(
+          child:
+              Text('未找到相关歌曲', style: Theme.of(context).textTheme.bodyMedium));
     }
 
     return ListView.builder(
@@ -1038,8 +1051,9 @@ class _SearchResultItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      title: Text(song.title),
-      subtitle: Text(song.artists),
+      title: Text(song.title, style: Theme.of(context).textTheme.bodyMedium),
+      subtitle:
+          Text(song.artists, style: Theme.of(context).textTheme.bodySmall),
       onTap: onTap,
     );
   }
@@ -1062,22 +1076,23 @@ class _LoadMoreButton extends StatelessWidget {
       child: Center(
         child: isLoading
             ? CircularProgressIndicator(
-                color: _Constants.backgroundColor,
+                color: Theme.of(context).primaryColor,
                 strokeWidth: 2,
               )
             : TextButton(
                 onPressed: onPressed,
                 style: TextButton.styleFrom(
-                  foregroundColor: _Constants.backgroundColor,
+                  foregroundColor: Theme.of(context).primaryColor,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                     side: BorderSide(
-                        color: _Constants.backgroundColor.withOpacity(0.5)),
+                        color: Theme.of(context).primaryColor.withOpacity(0.5)),
                   ),
                 ),
-                child: const Text('加载更多'),
+                child:
+                    Text('加载更多', style: Theme.of(context).textTheme.bodyMedium),
               ),
       ),
     );

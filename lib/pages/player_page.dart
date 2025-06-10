@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
-import '../models/song_mv.dart';
 import '../services/player_service.dart';
 import '../services/api_service.dart';
-import 'package:marquee/marquee.dart';
 import '../utils/image_utils.dart';
-import 'video_player_page.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:math';
 
@@ -36,10 +33,6 @@ class _PlayerPageState extends State<PlayerPage>
   final ScrollController _lyricsScrollController = ScrollController();
   String? _currentSongHash;
   bool _isFavorite = false;
-  final bool _isCheckingFavorite = false;
-  int _currentPage = 0;
-  List<MvInfo>? _mvList;
-  bool _isLoadingMV = false;
 
   // 专辑封面颜色相关
   Color _dominantColor = Colors.pink;
@@ -74,7 +67,6 @@ class _PlayerPageState extends State<PlayerPage>
     if (newHash != null && newHash != _currentSongHash) {
       _currentSongHash = newHash;
       _loadLyricsIfNeeded();
-      _loadMVList();
       _extractDominantColor();
     }
   }
@@ -172,32 +164,8 @@ class _PlayerPageState extends State<PlayerPage>
     }
   }
 
-// 加载MV列表
-  Future<void> _loadMVList() async {
-    if (_isLoadingMV) return;
-
-    final playerService = context.read<PlayerService>();
-    final currentSong = playerService.currentSongInfo;
-    if (currentSong == null) return;
-
-    setState(() => _isLoadingMV = true);
-
-    try {
-      final apiService = context.read<ApiService>();
-      final mvList = await apiService.getMVList(currentSong.mixsongid!);
-      if (mounted) {
-        setState(() => _mvList = mvList);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingMV = false);
-      }
-    }
-  }
-
   void _updateCurrentLyric(Duration position) {
     if (_lyricLines.isEmpty) return;
-
     // 找到当前时间对应的歌词行
     int index = _lyricLines.indexWhere((line) => line.timestamp > position);
     if (index == -1) {
@@ -211,19 +179,29 @@ class _PlayerPageState extends State<PlayerPage>
     if (index != _currentLyricIndex) {
       setState(() {
         _currentLyricIndex = index;
+
+        // 当播放行发生变化时，如果存在一个“手动选中”的行，就将其清除
+        // 这样点击高亮的效果在播放到下一句时就会自动消失
+        if (_selectedLyricIndex != null) {
+          _selectedLyricIndex = null;
+        }
       });
 
       // 自动滚动到当前歌词
       if (_showLyrics && _lyricsScrollController.hasClients) {
-        final offset = index * 50.0; // 每行高度50
+        // (此处是问题一的修复)
+        const itemHeight = 58.0;
+        final viewportHeight =
+            _lyricsScrollController.position.viewportDimension;
+        final currentLyricCenterPosition =
+            (index * itemHeight) + (itemHeight / 2);
+        final targetOffset = currentLyricCenterPosition - (viewportHeight / 2);
         final maxScroll = _lyricsScrollController.position.maxScrollExtent;
         final minScroll = _lyricsScrollController.position.minScrollExtent;
-
-        // 确保滚动位置在有效范围内
-        final targetOffset = offset.clamp(minScroll, maxScroll);
+        final clampedOffset = targetOffset.clamp(minScroll, maxScroll);
 
         _lyricsScrollController.animateTo(
-          targetOffset,
+          clampedOffset,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );
@@ -255,7 +233,6 @@ class _PlayerPageState extends State<PlayerPage>
     final List<LyricLine> result = [];
 
     // 跳过元数据行
-    int startIndex = 0;
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
       if (line.startsWith('[id:') ||
@@ -303,22 +280,8 @@ class _PlayerPageState extends State<PlayerPage>
     return result;
   }
 
-  List<String> _getPreviewLyrics() {
-    if (_lyricLines.isEmpty) return [];
-
-    final currentLine = _lyricLines[_currentLyricIndex].text;
-    final nextLineIndex = _currentLyricIndex + 1;
-    final nextLine = nextLineIndex < _lyricLines.length
-        ? _lyricLines[nextLineIndex].text
-        : '';
-
-    return [currentLine, nextLine];
-  }
-
   IconData _getPlayModeIcon(PlayMode mode) {
     switch (mode) {
-      case PlayMode.loop:
-        return Icons.repeat;
       case PlayMode.single:
         return Icons.repeat_one;
       case PlayMode.sequence:
@@ -341,7 +304,6 @@ class _PlayerPageState extends State<PlayerPage>
     final currentSong = playerService.currentSongInfo;
     final isPlaying = playerService.isPlaying;
     final position = playerService.position;
-    final duration = playerService.duration;
     final nextSong = playerService.nextSongInfo;
 
     if (currentSong == null) {
@@ -394,7 +356,6 @@ class _PlayerPageState extends State<PlayerPage>
                         onPageChanged: (index) {
                           setState(() {
                             _showLyrics = index == 1;
-                            _currentPage = index;
                           });
                         },
                         children: [
@@ -917,11 +878,8 @@ class _PlayerPageState extends State<PlayerPage>
     );
   }
 
-  // 获取播放模式对应的文本说明
   String _getPlayModeText(PlayMode mode) {
     switch (mode) {
-      case PlayMode.loop:
-        return '列表循环';
       case PlayMode.single:
         return '单曲循环';
       case PlayMode.sequence:

@@ -10,7 +10,6 @@ import 'audio_cache_manager.dart';
 import 'dart:math' as math;
 
 enum PlayMode {
-  loop, // 列表循环
   single, // 单曲循环
   sequence, // 顺序播放
   random // 随机播放
@@ -45,18 +44,19 @@ class PlayerService extends ChangeNotifier {
   List<PlaySongInfo> get playlist => _playlist;
   bool get canPlayNext =>
       _playlist.isNotEmpty &&
-      (_playMode == PlayMode.loop ||
-          _playMode == PlayMode.random ||
+      (_playMode == PlayMode.random ||
           (_playMode == PlayMode.sequence &&
               _currentIndex < _playlist.length - 1));
   bool get canPlayPrevious =>
       _playlist.isNotEmpty &&
-      (_playMode == PlayMode.loop ||
-          _playMode == PlayMode.random ||
+      (_playMode == PlayMode.random ||
           (_playMode == PlayMode.sequence && _currentIndex > 0));
 
   // 获取下一首歌曲信息
   PlaySongInfo? get nextSongInfo {
+    if (_playMode == PlayMode.random) {
+      return null; // 在随机播放模式下不显示下一首歌曲预览
+    }
     if (!canPlayNext) return null;
     return _playlist[_currentIndex + 1];
   }
@@ -238,9 +238,6 @@ class PlayerService extends ChangeNotifier {
   void togglePlayMode() {
     switch (_playMode) {
       case PlayMode.sequence:
-        _playMode = PlayMode.loop;
-        break;
-      case PlayMode.loop:
         _playMode = PlayMode.single;
         break;
       case PlayMode.single:
@@ -270,11 +267,6 @@ class PlayerService extends ChangeNotifier {
             // 已到列表末尾
             return;
           }
-          break;
-
-        case PlayMode.loop:
-          // 循环播放模式
-          nextIndex = (_currentIndex + 1) % _playlist.length;
           break;
 
         case PlayMode.single:
@@ -340,11 +332,6 @@ class PlayerService extends ChangeNotifier {
             // 已到列表开头
             return;
           }
-          break;
-
-        case PlayMode.loop:
-          // 循环播放模式
-          prevIndex = (_currentIndex - 1 + _playlist.length) % _playlist.length;
           break;
 
         case PlayMode.single:
