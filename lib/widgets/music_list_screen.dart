@@ -450,117 +450,13 @@ class _MusicListScreenState extends State<MusicListScreen>
     final isCurrentSong = currentSong != null && song.hash == currentSong.hash;
     final isPlaying = playerService.isPlaying && isCurrentSong;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isCurrentSong
-            ? Theme.of(context).primaryColor.withOpacity(0.05)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-        leading: Stack(
-          alignment: Alignment.center,
-          children: [
-            // 歌曲封面
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: song.cover.isNotEmpty
-                    ? Image.network(
-                        ImageUtils.getThumbnailUrl(song.cover),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest,
-                            child: Icon(
-                              Icons.music_note,
-                              color: Theme.of(context).iconTheme.color,
-                              size: 24,
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        child: Icon(
-                          Icons.music_note,
-                          color: Theme.of(context).iconTheme.color,
-                          size: 24,
-                        ),
-                      ),
-              ),
-            ),
-
-            // 正在播放的歌曲显示播放图标
-            if (isPlaying)
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
-          ],
-        ),
-        title: Text(
-          song.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: isCurrentSong
-                ? Theme.of(context).primaryColor
-                : Theme.of(context).textTheme.bodyMedium?.color,
-            fontWeight: isCurrentSong ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Text(
-            song.artists,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isCurrentSong
-                  ? Theme.of(context).primaryColor.withOpacity(0.7)
-                  : Theme.of(context).textTheme.bodySmall?.color,
-              fontSize: 11,
-            ),
-          ),
-        ),
-        trailing: IconButton(
-          icon: Icon(
-            Icons.more_vert,
-            color: Theme.of(context).iconTheme.color,
-            size: 20,
-          ),
-          onPressed: () => _showSongOptions(song),
-        ),
-        onTap: () => _playSong(song),
-      ),
+    // 直接返回新創建的元件
+    return SongListItem(
+      song: song,
+      isCurrent: isCurrentSong,
+      isPlaying: isPlaying,
+      onTap: () => _playSong(song),
+      onMoreTap: () => _showSongOptions(song),
     );
   }
 
@@ -963,6 +859,8 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
   final List<Song> songs;
 
   _SongSearchDelegate(this.songs);
+  @override
+  String? get searchFieldLabel => '🔍';
 
   @override
   List<Widget> buildActions(BuildContext context) {
@@ -1004,13 +902,29 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
           child:
               Text('未找到相关歌曲', style: Theme.of(context).textTheme.bodyMedium));
     }
-
+    final playerService = context.watch<PlayerService>();
+    final currentSong = playerService.currentSongInfo;
+    final isPlayingGlobal = playerService.isPlaying;
     return ListView.builder(
       itemCount: results.length,
-      itemBuilder: (context, index) => _SearchResultItem(
-        song: results[index],
-        onTap: () => _handleSongTap(context, results[index]),
-      ),
+      itemBuilder: (context, index) {
+        final song = results[index];
+        final isCurrentSong =
+            currentSong != null && song.hash == currentSong.hash;
+        final isPlaying = isPlayingGlobal && isCurrentSong;
+
+        // 使用我們剛剛創建的、功能齊全的 SongListItem 元件
+        return SongListItem(
+          song: song,
+          isCurrent: isCurrentSong,
+          isPlaying: isPlaying,
+          onTap: () => _handleSongTap(context, song),
+          onMoreTap: () {
+            // 你也可以在這裡實現 "更多" 選單功能
+            // 為了保持一致，可以呼叫主頁面的 _showSongOptions 方法，但需要重構
+          },
+        );
+      },
     );
   }
 
@@ -1036,26 +950,6 @@ class _SongSearchDelegate extends SearchDelegate<String?> {
         );
       }
     }
-  }
-}
-
-class _SearchResultItem extends StatelessWidget {
-  final Song song;
-  final VoidCallback onTap;
-
-  const _SearchResultItem({
-    required this.song,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(song.title, style: Theme.of(context).textTheme.bodyMedium),
-      subtitle:
-          Text(song.artists, style: Theme.of(context).textTheme.bodySmall),
-      onTap: onTap,
-    );
   }
 }
 
@@ -1094,6 +988,137 @@ class _LoadMoreButton extends StatelessWidget {
                 child:
                     Text('加载更多', style: Theme.of(context).textTheme.bodyMedium),
               ),
+      ),
+    );
+  }
+}
+
+// 你可以將這個新元件放在檔案的底部
+class SongListItem extends StatelessWidget {
+  final Song song;
+  final bool isCurrent;
+  final bool isPlaying;
+  final VoidCallback? onTap;
+  final VoidCallback? onMoreTap;
+
+  const SongListItem({
+    super.key,
+    required this.song,
+    required this.isCurrent,
+    required this.isPlaying,
+    this.onTap,
+    this.onMoreTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isCurrent
+            ? Theme.of(context).primaryColor.withOpacity(0.05)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+        leading: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: song.cover.isNotEmpty
+                    ? Image.network(
+                        ImageUtils.getThumbnailUrl(song.cover),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            child: Icon(
+                              Icons.music_note,
+                              color: Theme.of(context).iconTheme.color,
+                              size: 24,
+                            ),
+                          );
+                        },
+                      )
+                    : Container(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        child: Icon(
+                          Icons.music_note,
+                          color: Theme.of(context).iconTheme.color,
+                          size: 24,
+                        ),
+                      ),
+              ),
+            ),
+            if (isPlaying)
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+          ],
+        ),
+        title: Text(
+          song.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: isCurrent
+                ? Theme.of(context).primaryColor
+                : Theme.of(context).textTheme.bodyMedium?.color,
+            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            song.artists,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isCurrent
+                  ? Theme.of(context).primaryColor.withOpacity(0.7)
+                  : Theme.of(context).textTheme.bodySmall?.color,
+              fontSize: 11,
+            ),
+          ),
+        ),
+        trailing: IconButton(
+          icon: Icon(
+            Icons.more_vert,
+            color: Theme.of(context).iconTheme.color,
+            size: 20,
+          ),
+          onPressed: onMoreTap,
+        ),
+        onTap: onTap,
       ),
     );
   }
